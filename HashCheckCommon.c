@@ -18,6 +18,42 @@
 #define PROGRESS_BAR_STEPS 300
 #define BLAKE3_TBB_MIN_FILE_SIZE (512ULL * 1024ULL)
 
+static PTSTR WINAPI AllocLongPath( PCTSTR pszPath )
+{
+	static const TCHAR szLongPathPrefix[] = TEXT("\\\\?\\");
+	static const TCHAR szLongUncPrefix[] = TEXT("\\\\?\\UNC\\");
+
+	if (!pszPath)
+		return(NULL);
+
+	if (pszPath[0] == TEXT('\\') && pszPath[1] == TEXT('\\'))
+	{
+		if (pszPath[2] == TEXT('?') || pszPath[2] == TEXT('.'))
+			return(NULL);
+
+		SIZE_T cchPath = SSLen(pszPath);
+		PTSTR pszLongPath = (PTSTR)malloc((countof(szLongUncPrefix) + cchPath - 2) * sizeof(TCHAR));
+
+		if (pszLongPath)
+			SSChainNCpy2(pszLongPath, szLongUncPrefix, countof(szLongUncPrefix) - 1, pszPath + 2, cchPath - 1);
+
+		return(pszLongPath);
+	}
+
+	if (pszPath[0] && pszPath[1] == TEXT(':') && pszPath[2] == TEXT('\\'))
+	{
+		SIZE_T cchPath = SSLen(pszPath);
+		PTSTR pszLongPath = (PTSTR)malloc((countof(szLongPathPrefix) + cchPath) * sizeof(TCHAR));
+
+		if (pszLongPath)
+			SSChainNCpy2(pszLongPath, szLongPathPrefix, countof(szLongPathPrefix) - 1, pszPath, cchPath + 1);
+
+		return(pszLongPath);
+	}
+
+	return(NULL);
+}
+
 HANDLE __fastcall CreateThreadCRT( PVOID pThreadProc, PVOID pvParam )
 {
 	if (!pThreadProc)
@@ -50,7 +86,7 @@ HANDLE __fastcall CreateThreadCRT( PVOID pThreadProc, PVOID pvParam )
 
 HANDLE __fastcall OpenFileForReading( PCTSTR pszPath )
 {
-	return(CreateFile(
+	HANDLE hFile = CreateFile(
 		pszPath,
 		GENERIC_READ,
 		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -58,7 +94,34 @@ HANDLE __fastcall OpenFileForReading( PCTSTR pszPath )
 		OPEN_EXISTING,
 		FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
 		NULL
-	));
+	);
+
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		DWORD dwLastError = GetLastError();
+		PTSTR pszLongPath = AllocLongPath(pszPath);
+
+		if (pszLongPath)
+		{
+			hFile = CreateFile(
+				pszLongPath,
+				GENERIC_READ,
+				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+				NULL,
+				OPEN_EXISTING,
+				FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+				NULL
+			);
+
+			free(pszLongPath);
+		}
+		else
+		{
+			SetLastError(dwLastError);
+		}
+	}
+
+	return(hFile);
 }
 
 DWORD WINAPI GetReadBufferSizeForPath( PCTSTR pszPath )
