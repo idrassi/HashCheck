@@ -39,6 +39,7 @@ __forceinline UINT WINAPI HashCalcGetSharedStem( PHASHCALCCONTEXT phcctx, PCTSTR
 
 // Save helpers
 __forceinline VOID WINAPI HashCalcSetSavePrefix( PHASHCALCCONTEXT phcctx, PTSTR pszSave );
+__forceinline PCTSTR WINAPI HashCalcLineEnding( PHASHCALCCONTEXT phcctx );
 
 
 
@@ -300,7 +301,7 @@ VOID WINAPI HashCalcInitSave( PHASHCALCCONTEXT phcctx )
 	phcctx->hFileOut = INVALID_HANDLE_VALUE;
 
 	// Load settings
-	phcctx->opt.dwFlags = HCOF_FILTERINDEX | HCOF_SAVEENCODING;
+	phcctx->opt.dwFlags = HCOF_FILTERINDEX | HCOF_SAVEENCODING | HCOF_SAVEEOL;
 	OptionsLoad(&phcctx->opt);
 
 	// Initialize the struct for the first time, if needed
@@ -420,6 +421,11 @@ VOID WINAPI HashCalcInitSave( PHASHCALCCONTEXT phcctx )
 	}
 }
 
+PCTSTR WINAPI HashCalcLineEnding( PHASHCALCCONTEXT phcctx )
+{
+	return(phcctx->opt.dwSaveEol == 1 ? TEXT("\n") : TEXT("\r\n"));
+}
+
 VOID WINAPI HashCalcSetSaveFormat( PHASHCALCCONTEXT phcctx )
 {
 	// Set szFormat if necessary
@@ -432,13 +438,19 @@ VOID WINAPI HashCalcSetSaveFormat( PHASHCALCCONTEXT phcctx )
 			StringCchPrintf(
 				phcctx->szFormat,
 				countof(phcctx->szFormat),
-				TEXT("%%-%ds %%s\r\n"),
-				phcctx->cchMax - phcctx->cchAdjusted
+				TEXT("%%-%ds %%s%s"),
+				phcctx->cchMax - phcctx->cchAdjusted,
+				HashCalcLineEnding(phcctx)
 			);
 		}
 		else
 		{
-			SSStaticCpy(phcctx->szFormat, TEXT("%s *%s\r\n"));
+			StringCchPrintf(
+				phcctx->szFormat,
+				countof(phcctx->szFormat),
+				TEXT("%%s *%%s%s"),
+				HashCalcLineEnding(phcctx)
+			);
 		}
 	}
 }
@@ -465,7 +477,7 @@ BOOL WINAPI HashCalcWriteResult( PHASHCALCCONTEXT phcctx, PHASHCALCITEM pItem )
         // Start with a commented-out error message - "; UNREADABLE:"
         WCHAR szUnreadable[MAX_STRINGRES];
         LoadString(g_hModThisDll, IDS_HV_STATUS_UNREADABLE, szUnreadable, MAX_STRINGRES);
-        StringCchPrintfEx(szTbufferAppend, cchLine, &szTbufferAppend, &cchLine, 0, TEXT("; %s:\r\n"), szUnreadable);
+        StringCchPrintfEx(szTbufferAppend, cchLine, &szTbufferAppend, &cchLine, 0, TEXT("; %s:%s"), szUnreadable, HashCalcLineEnding(phcctx));
 
         // We'll still output a hash, but it will be all 0's, that way Verify will indicate an mismatch
         HashCalcClearInvalid(&pItem->results, TEXT('0'));
@@ -490,7 +502,7 @@ BOOL WINAPI HashCalcWriteResult( PHASHCALCCONTEXT phcctx, PHASHCALCITEM pItem )
 
 #ifdef _TIMED
     StringCchPrintfEx(szTbufferAppend, cchLine, NULL, &cchLine, 0,
-                      _T("; Elapsed: %d ms\r\n"), pItem->dwElapsed);
+                      _T("; Elapsed: %d ms%s"), pItem->dwElapsed, HashCalcLineEnding(phcctx));
 #endif
 
 	cchLine = MAX_PATH_BUFFER - cchLine;  // from now on cchLine is the line length in bytes, EXCLUDING nul terminator

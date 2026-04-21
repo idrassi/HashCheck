@@ -298,11 +298,27 @@ VOID __fastcall HashSaveWorkerMain( PHASHSAVECONTEXT phsctx )
         size_t cbBufferLeft;
         if (phsctx->opt.dwSaveEncoding == 1)  // UTF-16
         {
-            StringCbPrintfExW(buffer.szW, sizeof(buffer), NULL, &cbBufferLeft, 0, L"; Total elapsed: %d ms\r\n", GetTickCount() - dwStarted);
+            StringCbPrintfExW(
+                buffer.szW,
+                sizeof(buffer),
+                NULL,
+                &cbBufferLeft,
+                0,
+                L"; Total elapsed: %d ms%s",
+                GetTickCount() - dwStarted,
+                phsctx->opt.dwSaveEol == 1 ? L"\n" : L"\r\n");
         }
         else                                  // UTF-8 or ANSI
         {
-            StringCbPrintfExA(buffer.szA, sizeof(buffer), NULL, &cbBufferLeft, 0,  "; Total elapsed: %d ms\r\n", GetTickCount() - dwStarted);
+            StringCbPrintfExA(
+                buffer.szA,
+                sizeof(buffer),
+                NULL,
+                &cbBufferLeft,
+                0,
+                "; Total elapsed: %d ms%s",
+                GetTickCount() - dwStarted,
+                phsctx->opt.dwSaveEol == 1 ? "\n" : "\r\n");
         }
         DWORD dwUnused;
         WriteFile(phsctx->hFileOut, buffer.szA, (DWORD) (sizeof(buffer) - cbBufferLeft), &dwUnused, NULL);

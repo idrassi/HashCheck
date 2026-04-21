@@ -66,3 +66,7 @@
 #define IDC_OPT_FONT_PREVIEW            519
 #define IDC_OPT_LINK                    520
 #define IDC_OPT_CHK_BLAKE3              521
+#define IDC_OPT_EOL                     522
+#define IDC_OPT_EOL_CRLF                523
+#define IDC_OPT_EOL_LF                  524
+#define IDC_OPT_EOL_FIRSTID             IDC_OPT_EOL_CRLF

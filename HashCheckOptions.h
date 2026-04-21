@@ -23,6 +23,7 @@ typedef struct {
 	DWORD dwFilterIndex;
 	DWORD dwMenuDisplay;
 	DWORD dwSaveEncoding;
+	DWORD dwSaveEol;
 	DWORD dwChecksums;
 	LOGFONT lfFont;
 } HASHCHECKOPTIONS, *PHASHCHECKOPTIONS;
@@ -33,7 +34,8 @@ typedef struct {
 #define HCOF_SAVEENCODING 0x00000004  // The dwSaveEncoding member is valid
 #define HCOF_FONT         0x00000008  // The lfFont member is valid
 #define HCOF_CHECKSUMS    0x00000010  // The dwChecksums member is valid
-#define HCOF_ALL          0x0000001F
+#define HCOF_SAVEEOL      0x00000020  // The dwSaveEol member is valid
+#define HCOF_ALL          0x0000003F
 
 // Public functions
 VOID __fastcall OptionsDialog( HWND hWndOwner, PHASHCHECKOPTIONS popt );

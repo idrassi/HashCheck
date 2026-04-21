@@ -135,6 +135,17 @@ VOID __fastcall OptionsLoad( PHASHCHECKOPTIONS popt )
 		}
 	}
 
+	if (popt->dwFlags & HCOF_SAVEEOL)
+	{
+		if (!( hKey &&
+		       RegGetDW(hKey, TEXT("SaveEol"), &popt->dwSaveEol) &&
+		       popt->dwSaveEol < 2 ))
+		{
+			// Fall back to default (CRLF)
+			popt->dwSaveEol = 0;
+		}
+	}
+
     if (popt->dwFlags & HCOF_CHECKSUMS)
     {
         if (!(hKey &&
@@ -197,6 +208,9 @@ VOID __fastcall OptionsSave( PHASHCHECKOPTIONS popt )
 
 		if (popt->dwFlags & HCOF_SAVEENCODING)
 			RegSetDW(hKey, TEXT("SaveEncoding"), popt->dwSaveEncoding);
+
+		if (popt->dwFlags & HCOF_SAVEEOL)
+			RegSetDW(hKey, TEXT("SaveEol"), popt->dwSaveEol);
 
         if (popt->dwFlags & HCOF_CHECKSUMS)
             RegSetDW(hKey, TEXT("Checksums"), popt->dwChecksums);
@@ -290,6 +304,9 @@ VOID WINAPI OptionsDlgInit( HWND hWnd, POPTIONSCONTEXT poptctx )
 			{ IDC_OPT_ENCODING_UTF8,  IDS_OPT_ENCODING_UTF8  },
 			{ IDC_OPT_ENCODING_UTF16, IDS_OPT_ENCODING_UTF16 },
 			{ IDC_OPT_ENCODING_ANSI,  IDS_OPT_ENCODING_ANSI  },
+			{ IDC_OPT_EOL,            IDS_OPT_EOL            },
+			{ IDC_OPT_EOL_CRLF,       IDS_OPT_EOL_CRLF       },
+			{ IDC_OPT_EOL_LF,         IDS_OPT_EOL_LF         },
 			{ IDC_OPT_CHK,            IDS_OPT_CHK            },
 			{ IDC_OPT_FONT,           IDS_OPT_FONT           },
 			{ IDC_OPT_FONT_CHANGE,    IDS_OPT_FONT_CHANGE    },
@@ -320,6 +337,9 @@ VOID WINAPI OptionsDlgInit( HWND hWnd, POPTIONSCONTEXT poptctx )
 		                   BM_SETCHECK, BST_CHECKED, 0);
 
 		SendDlgItemMessage(hWnd, IDC_OPT_ENCODING_FIRSTID + poptctx->popt->dwSaveEncoding,
+		                   BM_SETCHECK, BST_CHECKED, 0);
+
+		SendDlgItemMessage(hWnd, IDC_OPT_EOL_FIRSTID + poptctx->popt->dwSaveEol,
 		                   BM_SETCHECK, BST_CHECKED, 0);
 
 #define HASH_OPT_SET_CHECKS_op(alg)                        \
@@ -419,6 +439,20 @@ BOOL WINAPI SaveSettings( HWND hWnd, POPTIONSCONTEXT poptctx )
 	{
 		poptctx->popt->dwFlags |= HCOF_SAVEENCODING;
 		poptctx->popt->dwSaveEncoding = i;
+	}
+
+	// Get the user-selected value for dwSaveEol
+	for (i = 0; i < 2; ++i)
+	{
+		if (SendDlgItemMessage(hWnd, IDC_OPT_EOL_FIRSTID + i, BM_GETCHECK, 0, 0) == BST_CHECKED)
+			break;
+	}
+
+	// If the value has changed, flag it for saving
+	if (i < 2 && poptctx->popt->dwSaveEol != i)
+	{
+		poptctx->popt->dwFlags |= HCOF_SAVEEOL;
+		poptctx->popt->dwSaveEol = i;
 	}
 
 	// Flag the font for saving if necessary

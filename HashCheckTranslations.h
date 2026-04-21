@@ -64,5 +64,8 @@
 #define IDS_OPT_CHK_ERROR               0x450A
 #define IDS_OPT_FONT                    0x450B
 #define IDS_OPT_FONT_CHANGE             0x450C
+#define IDS_OPT_EOL                     0x450D
+#define IDS_OPT_EOL_CRLF                0x450E
+#define IDS_OPT_EOL_LF                  0x450F
 #define IDS_OPT_OK                      IDS_HC_OK
 #define IDS_OPT_CANCEL                  IDS_HC_CANCEL
