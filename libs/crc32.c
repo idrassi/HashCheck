@@ -42,7 +42,7 @@
 
 #include "WinHash.h"
 
-static UINT32 crc32_tab[] = {
+static UINT32 crc32_tab[8][256] = {{
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,
 	0xe963a535, 0x9e6495a3,	0x0edb8832, 0x79dcb8a4, 0xe0d5e91e, 0x97d2d988,
 	0x09b64c2b, 0x7eb17cbd, 0xe7b82d07, 0x90bf1d91, 0x1db71064, 0x6ab020f2,
@@ -86,17 +86,64 @@ static UINT32 crc32_tab[] = {
 	0xbdbdf21c, 0xcabac28a, 0x53b39330, 0x24b4a3a6, 0xbad03605, 0xcdd70693,
 	0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
 	0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
-};
+}};
+
+static INIT_ONCE crc32_init_once = INIT_ONCE_STATIC_INIT;
+
+#define CRC32_READ_LE32(p) \
+	((UINT32)(p)[0] | ((UINT32)(p)[1] << 8) | ((UINT32)(p)[2] << 16) | ((UINT32)(p)[3] << 24))
+
+static BOOL CALLBACK crc32_init_tables(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context)
+{
+	UINT i, j;
+
+	UNREFERENCED_PARAMETER(InitOnce);
+	UNREFERENCED_PARAMETER(Parameter);
+	UNREFERENCED_PARAMETER(Context);
+
+	for (i = 0; i < 256; ++i)
+	{
+		UINT32 crc = crc32_tab[0][i];
+
+		for (j = 1; j < 8; ++j)
+		{
+			crc = crc32_tab[0][crc & 0xFF] ^ (crc >> 8);
+			crc32_tab[j][i] = crc;
+		}
+	}
+
+	return(TRUE);
+}
 
 UINT32 crc32(UINT32 crc, PCBYTE buf, UINT size)
 {
 	const BYTE * p;
 
 	p = buf;
+	InitOnceExecuteOnce(&crc32_init_once, crc32_init_tables, NULL, NULL);
+
 	crc = crc ^ ~0U;
 
+	while (size >= 8)
+	{
+		UINT32 lo = crc ^ CRC32_READ_LE32(p);
+		UINT32 hi = CRC32_READ_LE32(p + 4);
+
+		crc = crc32_tab[7][lo & 0xFF] ^
+		      crc32_tab[6][(lo >> 8) & 0xFF] ^
+		      crc32_tab[5][(lo >> 16) & 0xFF] ^
+		      crc32_tab[4][lo >> 24] ^
+		      crc32_tab[3][hi & 0xFF] ^
+		      crc32_tab[2][(hi >> 8) & 0xFF] ^
+		      crc32_tab[1][(hi >> 16) & 0xFF] ^
+		      crc32_tab[0][hi >> 24];
+
+		p += 8;
+		size -= 8;
+	}
+
 	while (size--)
-		crc = crc32_tab[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
+		crc = crc32_tab[0][(crc ^ *p++) & 0xFF] ^ (crc >> 8);
 
 	return crc ^ ~0U;
 }
