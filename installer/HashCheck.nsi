@@ -85,11 +85,14 @@ Section
         ; Install the 64-bit TBB runtime beside the shell extension DLL.
         Delete /REBOOTOK "$SYSDIR\ShellExt\tbb12.dll"
         ClearErrors
-        SetOutPath "$SYSDIR\ShellExt"
+        SetOutPath "$PROGRAMFILES64\HashCheck"
         File /oname=tbb12.dll ..\Bin\x64\Release\tbb12.dll
         IfErrors abort_on_error
         File /oname=tbb12-LICENSE.txt ..\libs\oneTBB\LICENSE.txt
         IfErrors abort_on_error
+
+        ; Clean up the old System32 install location used by earlier releases.
+        Delete /REBOOTOK $SYSDIR\ShellExt\HashCheck.dll
 
         ; One of these 64-bit dlls exists and is undeletable if and
         ; only if it was in use and therefore a reboot is now required
@@ -110,11 +113,17 @@ Section
         File /oname=$0 ..\Bin\Win32\Release\HashCheck.dll
         ExecWait 'regsvr32 /i:"NoUninstall" /n /s "$0"'
         IfErrors abort_on_error
+
+        ; Clean up the old SysWOW64 install location used by earlier releases.
+        Delete /REBOOTOK $SYSDIR\ShellExt\HashCheck.dll
     ${Else}
         ; Install the 32-bit dll
         File /oname=$0 ..\Bin\Win32\Release\HashCheck.dll
         ExecWait 'regsvr32 /i /n /s "$0"'
         IfErrors abort_on_error	
+
+        ; Clean up the old System32 install location used by earlier releases.
+        Delete /REBOOTOK $SYSDIR\ShellExt\HashCheck.dll
     ${EndIf}
 
     Delete $0

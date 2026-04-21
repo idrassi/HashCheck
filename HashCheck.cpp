@@ -39,6 +39,10 @@ STDAPI DllRegisterServerEx( LPCTSTR );
 HRESULT Install( BOOL, BOOL );
 HRESULT Uninstall( );
 BOOL WINAPI InstallFile( LPCTSTR, LPTSTR, LPTSTR );
+BOOL WINAPI GetProgramFilesDirectory( LPTSTR, UINT );
+#ifdef _WIN64
+BOOL WINAPI Uninstall32BitDll( LPCTSTR );
+#endif
 
 
 #if defined(_USRDLL) && defined(_DLL)
@@ -268,7 +272,7 @@ STDAPI DllUnregisterServer( )
 
 STDAPI DllInstall( BOOL bInstall, LPCWSTR pszCmdLine )
 {
-	// To install into System32\ShellExt
+	// To install into Program Files\HashCheck
 	// regsvr32.exe /i /n HashCheck.dll
 	//
 	// To install without registering an uninstaller
@@ -297,18 +301,24 @@ STDAPI DllInstall( BOOL bInstall, LPCWSTR pszCmdLine )
 	);
 }
 
+BOOL WINAPI GetProgramFilesDirectory( LPTSTR lpszPath, UINT cchPath )
+{
+	return(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_PROGRAM_FILES, NULL, SHGFP_TYPE_CURRENT, lpszPath)) &&
+	       lpszPath[0] &&
+	       SSLen(lpszPath) < cchPath);
+}
+
 HRESULT Install( BOOL bRegisterUninstaller, BOOL bCopyFile )
 {
 	TCHAR szCurrentDllPath[MAX_PATH << 1];
 	GetModuleFileName(g_hModThisDll, szCurrentDllPath, countof(szCurrentDllPath));
 
-	TCHAR szSysDir[MAX_PATH + 0x20];
-	UINT uSize = GetSystemDirectory(szSysDir, MAX_PATH);
+	TCHAR szInstallDir[MAX_PATH + 0x20];
 
-	if (uSize && uSize < MAX_PATH)
+	if (GetProgramFilesDirectory(szInstallDir, countof(szInstallDir)))
 	{
-		LPTSTR lpszPath = szSysDir;
-		LPTSTR lpszPathAppend = lpszPath + uSize;
+		LPTSTR lpszPath = szInstallDir;
+		LPTSTR lpszPathAppend = lpszPath + SSLen(lpszPath);
 
 		if (*(lpszPathAppend - 1) != TEXT('\\'))
 			*lpszPathAppend++ = TEXT('\\');
@@ -387,7 +397,7 @@ HRESULT Install( BOOL bRegisterUninstaller, BOOL bCopyFile )
 
 		} // if copied & registered
 
-	} // if valid sysdir
+	} // if valid install dir
 
 	return(E_FAIL);
 }
@@ -405,77 +415,34 @@ HRESULT Uninstall( )
     StringCbCopy(szCurrentDllPath, sizeof(szCurrentDllPath), szTemp);
 
 #ifdef _WIN64
-    // If this 64-bit dll was installed to the default location,
-    // uninstall the 32-bit dll if it exists in its default location
+	{
+		TCHAR sz32BitDllPath[MAX_PATH + 0x20];
+		UINT uSize = GetSystemWow64Directory(sz32BitDllPath, MAX_PATH);
 
-    TCHAR lpszDefInstallPath[MAX_PATH + 0x20];
-    UINT uSize = GetSystemDirectory(lpszDefInstallPath, MAX_PATH);
+		if (uSize && uSize < MAX_PATH)
+		{
+			LPTSTR lpszPathAppend = sz32BitDllPath + uSize;
 
-    if (uSize && uSize < MAX_PATH)
-    {
-        LPTSTR lpszPathAppend = lpszDefInstallPath + uSize;
+			if (*(lpszPathAppend - 1) != TEXT('\\'))
+				*lpszPathAppend++ = TEXT('\\');
 
-        if (*(lpszPathAppend - 1) != TEXT('\\'))
-            *lpszPathAppend++ = TEXT('\\');
+			SSStaticCpy(lpszPathAppend, TEXT("ShellExt") TEXT("\\") TEXT(HASHCHECK_FILENAME_STR));
+			if (!Uninstall32BitDll(sz32BitDllPath))
+				hr = E_FAIL;
+		}
 
-        static const TCHAR szFolderAndFilename[] = TEXT("ShellExt") TEXT("\\") TEXT(HASHCHECK_FILENAME_STR);
-        SSStaticCpy(lpszPathAppend, szFolderAndFilename);
-
-        // If this 64-bit dll was installed to the default location
-        if (StrCmpI(szCurrentDllPath, lpszDefInstallPath) == 0)
-        {
-            TCHAR lpszSystemWow64[MAX_PATH + 0x20];
-            uSize = GetSystemWow64Directory(lpszSystemWow64, MAX_PATH);
-
-            if (uSize && uSize < MAX_PATH)
-            {
-                LPTSTR lpszSystemWow64Append = lpszSystemWow64 + uSize;
-
-                if (*(lpszSystemWow64Append - 1) != TEXT('\\'))
-                    SSCpy2Ch(lpszSystemWow64Append++, TEXT('\\'), 0);
-
-                StringCbCopyEx(lpszDefInstallPath, sizeof(lpszDefInstallPath), lpszSystemWow64, &lpszPathAppend, NULL, 0);
-
-                SSStaticCpy(lpszPathAppend, szFolderAndFilename);
-
-                // If the 32-bit dll exists in its default location
-                if (PathFileExists(lpszDefInstallPath))
-                {
-                    static const TCHAR szRegsvr32[] = TEXT("regsvr32.exe");
-                    SSStaticCpy(lpszSystemWow64Append, szRegsvr32);
-                    // the lpszSystemWow64 buffer now contains the full regsvr32.exe path
-
-                    TCHAR lpszCommandLine[MAX_PATH + 0x20];
-                    LPTSTR lpszCommandLineAppend;
-
-                    static const TCHAR szCommandOpts[] = TEXT("regsvr32.exe /u /i /n /s ");
-                    lpszCommandLineAppend = SSStaticCpy(lpszCommandLine, szCommandOpts) - 1;
-
-                    StringCbCopy(lpszCommandLineAppend, sizeof(lpszCommandLine)-sizeof(szCommandOpts), lpszDefInstallPath);
-
-                    STARTUPINFO si;
-                    memset(&si, 0, sizeof(si));
-                    si.cb = sizeof(si);
-
-                    PROCESS_INFORMATION pi;
-                    memset(&pi, 0, sizeof(pi));
-
-                    if (!CreateProcess(lpszSystemWow64, lpszCommandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
-                        return E_FAIL;
-
-                    DWORD dwExit;
-                    WaitForSingleObject(pi.hProcess, INFINITE);
-                    GetExitCodeProcess(pi.hProcess, &dwExit);
-                    CloseHandle(pi.hThread);
-                    CloseHandle(pi.hProcess);
-
-                    if (dwExit != 0)
-                        return E_FAIL;
-                }
-            }
-        }
-    }
+		uSize = GetEnvironmentVariable(TEXT("ProgramFiles(x86)"), sz32BitDllPath, MAX_PATH);
+		if (uSize && uSize < MAX_PATH)
+		{
+			if (SUCCEEDED(StringCchCat(sz32BitDllPath, countof(sz32BitDllPath), TEXT("\\HashCheck\\") TEXT(HASHCHECK_FILENAME_STR))) &&
+			    !Uninstall32BitDll(sz32BitDllPath))
+				hr = E_FAIL;
+		}
+	}
 #endif
+
+	// Unregister before deleting so Explorer stops advertising the extension
+	if (DllUnregisterServer() != S_OK) hr = E_FAIL;
 
 	// Rename the DLL prior to scheduling it for deletion
 	*lpszTempAppend++ = TEXT('.');
@@ -521,9 +488,6 @@ HRESULT Uninstall( )
 	}
 #endif
 
-	// Unregister
-	if (DllUnregisterServer() != S_OK) hr = E_FAIL;
-
 	// Disassociate file extensions; see the comment in DllUnregisterServer for
 	// why this step is skipped for Wow64 processes
 	if (!Wow64CheckProcess())
@@ -548,13 +512,58 @@ HRESULT Uninstall( )
 	return(hr);
 }
 
+#ifdef _WIN64
+BOOL WINAPI Uninstall32BitDll( LPCTSTR lpszDllPath )
+{
+	if (!PathFileExists(lpszDllPath))
+		return(TRUE);
+
+	TCHAR szRegsvr32[MAX_PATH + 0x20];
+	UINT uSize = GetSystemWow64Directory(szRegsvr32, MAX_PATH);
+
+	if (!uSize || uSize >= MAX_PATH)
+		return(FALSE);
+
+	if (FAILED(StringCchCat(szRegsvr32, countof(szRegsvr32), TEXT("\\regsvr32.exe"))))
+		return(FALSE);
+
+	TCHAR szCommandLine[MAX_PATH << 1];
+	if (FAILED(StringCchPrintf(
+		szCommandLine,
+		countof(szCommandLine),
+		TEXT("regsvr32.exe /u /i /n /s \"%s\""),
+		lpszDllPath)))
+	{
+		return(FALSE);
+	}
+
+	STARTUPINFO si;
+	memset(&si, 0, sizeof(si));
+	si.cb = sizeof(si);
+
+	PROCESS_INFORMATION pi;
+	memset(&pi, 0, sizeof(pi));
+
+	if (!CreateProcess(szRegsvr32, szCommandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+		return(FALSE);
+
+	DWORD dwExit;
+	WaitForSingleObject(pi.hProcess, INFINITE);
+	GetExitCodeProcess(pi.hProcess, &dwExit);
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+
+	return(dwExit == 0);
+}
+#endif
+
 BOOL WINAPI InstallFile( LPCTSTR lpszSource, LPTSTR lpszDest, LPTSTR lpszDestAppend )
 {
-	static const TCHAR szShellExt[] = TEXT("ShellExt");
+	static const TCHAR szInstallFolder[] = TEXT("HashCheck");
 	static const TCHAR szDestFile[] = TEXT("\\") TEXT(HASHCHECK_FILENAME_STR);
 
-	SSStaticCpy(lpszDestAppend, szShellExt);
-	lpszDestAppend += countof(szShellExt) - 1;
+	SSStaticCpy(lpszDestAppend, szInstallFolder);
+	lpszDestAppend += countof(szInstallFolder) - 1;
 
 	// Create directory if necessary
 	if (! PathFileExists(lpszDest))
