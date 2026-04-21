@@ -1,3 +1,18 @@
+# Project-owned Windows source files are stored with CRLF line endings.
+# Treat CR at EOL as part of the line ending when checking whitespace.
+/*.c whitespace=cr-at-eol
+/*.cpp whitespace=cr-at-eol
+/*.h whitespace=cr-at-eol
+/*.hpp whitespace=cr-at-eol
+/*.rc whitespace=cr-at-eol
+/*.def whitespace=cr-at-eol
+/*.manifest whitespace=cr-at-eol
+/*.props whitespace=cr-at-eol
+/*.sln whitespace=cr-at-eol
+/*.vcxproj whitespace=cr-at-eol
+/*.filters whitespace=cr-at-eol
+/installer/*.nsi whitespace=cr-at-eol
+
 # Keep vendored oneTBB text files in upstream form without making
 # git diff --check report formatting that comes from the upstream package.
 libs/oneTBB/** whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab,-indent-with-non-tab,-tab-in-indent,cr-at-eol
