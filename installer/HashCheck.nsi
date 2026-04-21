@@ -14,6 +14,22 @@ ManifestSupportedOS all
 !define MUI_ICON ..\HashCheck.ico
 !define MUI_ABORTWARNING
 
+; Some stripped NSIS layouts omit Contrib\UIs\modern.exe. Prefer the normal
+; Modern UI resource when it exists, but fall back to the Unicode LZMA stub's
+; built-in dialogs so makensis can still build the installer.
+!ifndef MUI_UI
+!if /FileExists "${NSISDIR}\Contrib\UIs\modern.exe"
+!define MUI_UI "${NSISDIR}\Contrib\UIs\modern.exe"
+!else
+!if /FileExists "${NSISDIR}\Stubs\lzma_solid-x86-unicode"
+!warning "NSIS Modern UI resource modern.exe not found; using Unicode LZMA stub UI resources."
+!define MUI_UI "${NSISDIR}\Stubs\lzma_solid-x86-unicode"
+!else
+!error "NSIS Modern UI resource modern.exe is missing and no Unicode LZMA stub fallback was found."
+!endif
+!endif
+!endif
+
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW change_license_font
 !insertmacro MUI_PAGE_LICENSE "..\license.txt"
