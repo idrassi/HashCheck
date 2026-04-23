@@ -16,6 +16,7 @@ class CHashCheck : public IShellExtInit, IContextMenu, IShellPropSheetExt, IDrop
 	protected:
 		CREF m_cRef;
 		HSIMPLELIST m_hList;
+		BOOL m_bCanVerify;
         HBITMAP m_hMenuBitmap;
 
 	public:

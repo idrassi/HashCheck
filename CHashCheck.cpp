@@ -9,17 +9,87 @@
 #include "CHashCheck.hpp"
 #include "HashCheckUI.h"
 #include "HashCheckOptions.h"
+#include "libs/WinHash.h"
 
 // Undocumented Win5-era shell flag used by the Start Menu workaround below.
 #ifndef CMF_VERBSONMAN
 #define CMF_VERBSONMAN 0x00020000
 #endif
 
+enum {
+	HC_CMD_VERIFY = 0,
+	HC_CMD_CREATE = 1
+};
+
+static BOOL IsChecksumFilePath( PCTSTR pszPath )
+{
+	DWORD dwAttributes = GetFileAttributes(pszPath);
+	if (dwAttributes == INVALID_FILE_ATTRIBUTES || (dwAttributes & FILE_ATTRIBUTE_DIRECTORY))
+		return(FALSE);
+
+	PCTSTR pszExt = StrRChr(pszPath, NULL, TEXT('.'));
+	if (!pszExt)
+		return(FALSE);
+
+	for (UINT i = 0; i < countof(g_szHashExtsTab); ++i)
+	{
+		if (StrCmpI(pszExt, g_szHashExtsTab[i]) == 0)
+			return(TRUE);
+	}
+
+	return(FALSE);
+}
+
+static HRESULT CopyContextMenuHelpTextA( UINT uStringID, LPSTR pszName, UINT cchMax )
+{
+	LoadStringA(g_hModThisDll, uStringID, pszName, cchMax);
+
+	LPSTR lpszSrcA = pszName;
+	LPSTR lpszDestA = pszName;
+
+	while (*lpszSrcA && *lpszSrcA != '(' && *lpszSrcA != '.')
+	{
+		if (*lpszSrcA != '&')
+		{
+			*lpszDestA = *lpszSrcA;
+			++lpszDestA;
+		}
+
+		++lpszSrcA;
+	}
+
+	*lpszDestA = 0;
+	return(S_OK);
+}
+
+static HRESULT CopyContextMenuHelpTextW( UINT uStringID, LPWSTR pszName, UINT cchMax )
+{
+	LoadStringW(g_hModThisDll, uStringID, pszName, cchMax);
+
+	LPWSTR lpszSrcW = pszName;
+	LPWSTR lpszDestW = pszName;
+
+	while (*lpszSrcW && *lpszSrcW != L'(' && *lpszSrcW != L'.')
+	{
+		if (*lpszSrcW != L'&')
+		{
+			*lpszDestW = *lpszSrcW;
+			++lpszDestW;
+		}
+
+		++lpszSrcW;
+	}
+
+	*lpszDestW = 0;
+	return(S_OK);
+}
+
 CHashCheck::CHashCheck( )
 {
     InterlockedIncrement(&g_cRefThisDll);
     m_cRef = 1;
     m_hList = NULL;
+    m_bCanVerify = FALSE;
     m_hMenuBitmap = g_uWinVer >= 0x0600 ?  // Vista+
         (HBITMAP)LoadImage(g_hModThisDll, MAKEINTRESOURCE(IDI_MENUBITMAP), IMAGE_BITMAP, 0, 0, LR_DEFAULTSIZE | LR_CREATEDIBSECTION) :
         NULL;
@@ -65,6 +135,7 @@ STDMETHODIMP CHashCheck::Initialize( LPCITEMIDLIST pidlFolder, LPDATAOBJECT pdto
 	// Make sure that we are working with a fresh list
 	SLRelease(m_hList);
 	m_hList = SLCreate();
+	m_bCanVerify = FALSE;
 
 	// This indent exists to facilitate diffing against the CmdOpen source
 	{
@@ -85,6 +156,9 @@ STDMETHODIMP CHashCheck::Initialize( LPCITEMIDLIST pidlFolder, LPDATAOBJECT pdto
 					SLAddStringI(m_hList, szPath);
 				}
 			}
+
+			if (uDrops == 1 && DragQueryFile(hDrop, 0, szPath, countof(szPath)))
+				m_bCanVerify = IsChecksumFilePath(szPath);
 
 			GlobalUnlock(medium.hGlobal);
 		}
@@ -116,12 +190,12 @@ STDMETHODIMP CHashCheck::QueryContextMenu( HMENU hmenu, UINT indexMenu, UINT idC
 	if (opt.dwMenuDisplay == 2 || (opt.dwMenuDisplay == 1 && !(uFlags & CMF_EXTENDEDVERBS)))
 		return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 0));
 
+	UINT cCommands = m_bCanVerify ? 2 : 1;
+	if (idCmdFirst + cCommands - 1 > idCmdLast)
+		return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 0));
+
     if (! InsertMenu(hmenu, indexMenu, MF_SEPARATOR | MF_BYPOSITION, 0, NULL))
         return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 0));
-
-	// Load the localized menu text
-	TCHAR szMenuText[MAX_STRINGMSG];
-	LoadString(g_hModThisDll, IDS_HS_MENUTEXT, szMenuText, countof(szMenuText));
 
     MENUITEMINFO mii;
     mii.cbSize     = sizeof(mii);
@@ -129,28 +203,78 @@ STDMETHODIMP CHashCheck::QueryContextMenu( HMENU hmenu, UINT indexMenu, UINT idC
     if (g_uWinVer >= 0x0600)  // prior to Vista, 32-bit bitmaps w/alpha channels don't render correctly in menus
         mii.fMask |= MIIM_BITMAP;
     mii.fType      = MFT_STRING;
-    mii.wID        = idCmdFirst;
-    mii.dwTypeData = szMenuText;
     mii.hbmpItem   = m_hMenuBitmap;
-	if (! InsertMenuItem(hmenu, indexMenu + 1, TRUE, &mii))
+
+	UINT uMenuPos = indexMenu + 1;
+	if (m_bCanVerify)
+	{
+		TCHAR szVerifyMenuText[MAX_STRINGMSG];
+		LoadString(g_hModThisDll, IDS_HV_MENUTEXT, szVerifyMenuText, countof(szVerifyMenuText));
+
+		mii.wID        = idCmdFirst + HC_CMD_VERIFY;
+		mii.dwTypeData = szVerifyMenuText;
+		if (! InsertMenuItem(hmenu, uMenuPos++, TRUE, &mii))
+			return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 0));
+	}
+
+	TCHAR szCreateMenuText[MAX_STRINGMSG];
+	LoadString(g_hModThisDll, IDS_HS_MENUTEXT, szCreateMenuText, countof(szCreateMenuText));
+
+	mii.wID        = idCmdFirst + (m_bCanVerify ? HC_CMD_CREATE : HC_CMD_VERIFY);
+	mii.dwTypeData = szCreateMenuText;
+	if (! InsertMenuItem(hmenu, uMenuPos++, TRUE, &mii))
 		return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 0));
 
-    InsertMenu(hmenu, indexMenu + 2, MF_SEPARATOR | MF_BYPOSITION, 0, NULL);
+    InsertMenu(hmenu, uMenuPos, MF_SEPARATOR | MF_BYPOSITION, 0, NULL);
 
-	return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 1));
+	return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, cCommands));
 }
 
 STDMETHODIMP CHashCheck::InvokeCommand( LPCMINVOKECOMMANDINFO pici )
 {
-	// Ignore string verbs (high word must be zero)
-	// The only valid command index is 0 (low word must be zero)
-	if (pici->lpVerb)
+	// Ignore string verbs
+	if (HIWORD(pici->lpVerb))
+		return(E_INVALIDARG);
+
+	UINT idCmd = LOWORD(pici->lpVerb);
+
+	if (m_bCanVerify && idCmd == HC_CMD_VERIFY)
+	{
+		PCTSTR pszPath = (PCTSTR)SLGetData(m_hList);
+		if (!pszPath)
+			return(E_INVALIDARG);
+
+		UINT cchPath = (UINT)SSLen(pszPath) + 1;
+		LPTSTR pszPathCopy = (LPTSTR)malloc(cchPath * sizeof(TCHAR));
+		if (!pszPathCopy)
+			return(E_OUTOFMEMORY);
+
+		SSCpy(pszPathCopy, pszPath);
+		InterlockedIncrement(&g_cRefThisDll);
+
+		HANDLE hThread = CreateThreadCRT(HashVerifyThread, pszPathCopy);
+		if (!hThread)
+		{
+			InterlockedDecrement(&g_cRefThisDll);
+			free(pszPathCopy);
+			return(E_FAIL);
+		}
+
+		CloseHandle(hThread);
+
+		SLRelease(m_hList);
+		m_hList = NULL;
+
+		return(S_OK);
+	}
+
+	if (idCmd != (m_bCanVerify ? HC_CMD_CREATE : HC_CMD_VERIFY))
 		return(E_INVALIDARG);
 
 	// Hand things over to HashSave, where all the work is done...
 	HashSaveStart(pici->hwnd, m_hList);
 
-	// HaveSave has AddRef'ed and now owns our list
+	// HashSave has AddRef'ed and now owns our list
 	SLRelease(m_hList);
 	m_hList = NULL;
 
@@ -161,9 +285,15 @@ STDMETHODIMP CHashCheck::GetCommandString( UINT_PTR idCmd, UINT uFlags, UINT *pw
 {
 	static const  CHAR szVerbA[] =  "cksum";
 	static const WCHAR szVerbW[] = L"cksum";
+	static const  CHAR szVerifyVerbA[] =  "verifychecksum";
+	static const WCHAR szVerifyVerbW[] = L"verifychecksum";
 
-	if (idCmd != 0 || cchMax < countof(szVerbW))
+	BOOL bVerifyCommand = m_bCanVerify && idCmd == HC_CMD_VERIFY;
+	BOOL bCreateCommand = idCmd == (m_bCanVerify ? HC_CMD_CREATE : HC_CMD_VERIFY);
+	if (!bVerifyCommand && !bCreateCommand)
 		return(E_INVALIDARG);
+
+	UINT uStringID = bVerifyCommand ? IDS_HV_MENUTEXT : IDS_HS_MENUTEXT;
 
 	switch (uFlags)
 	{
@@ -172,57 +302,45 @@ STDMETHODIMP CHashCheck::GetCommandString( UINT_PTR idCmd, UINT uFlags, UINT *pw
 
 		case GCS_HELPTEXTA:
 		{
-			LoadStringA(g_hModThisDll, IDS_HS_MENUTEXT, (LPSTR)pszName, cchMax);
-
-			LPSTR lpszSrcA = (LPSTR)pszName;
-			LPSTR lpszDestA = (LPSTR)pszName;
-
-			while (*lpszSrcA && *lpszSrcA != '(' && *lpszSrcA != '.')
-			{
-				if (*lpszSrcA != '&')
-				{
-					*lpszDestA = *lpszSrcA;
-					++lpszDestA;
-				}
-
-				++lpszSrcA;
-			}
-
-			*lpszDestA = 0;
-			return(S_OK);
+			return(CopyContextMenuHelpTextA(uStringID, (LPSTR)pszName, cchMax));
 		}
 
 		case GCS_HELPTEXTW:
 		{
-			LoadStringW(g_hModThisDll, IDS_HS_MENUTEXT, (LPWSTR)pszName, cchMax);
-
-			LPWSTR lpszSrcW = (LPWSTR)pszName;
-			LPWSTR lpszDestW = (LPWSTR)pszName;
-
-			while (*lpszSrcW && *lpszSrcW != L'(' && *lpszSrcW != L'.')
-			{
-				if (*lpszSrcW != L'&')
-				{
-					*lpszDestW = *lpszSrcW;
-					++lpszDestW;
-				}
-
-				++lpszSrcW;
-			}
-
-			*lpszDestW = 0;
-			return(S_OK);
+			return(CopyContextMenuHelpTextW(uStringID, (LPWSTR)pszName, cchMax));
 		}
 
 		case GCS_VERBA:
 		{
-			SSStaticCpyA((LPSTR)pszName, szVerbA);
+			if (bVerifyCommand)
+			{
+				if (cchMax < countof(szVerifyVerbA))
+					return(E_INVALIDARG);
+				SSStaticCpyA((LPSTR)pszName, szVerifyVerbA);
+			}
+			else
+			{
+				if (cchMax < countof(szVerbA))
+					return(E_INVALIDARG);
+				SSStaticCpyA((LPSTR)pszName, szVerbA);
+			}
 			return(S_OK);
 		}
 
 		case GCS_VERBW:
 		{
-			SSStaticCpyW((LPWSTR)pszName, szVerbW);
+			if (bVerifyCommand)
+			{
+				if (cchMax < countof(szVerifyVerbW))
+					return(E_INVALIDARG);
+				SSStaticCpyW((LPWSTR)pszName, szVerifyVerbW);
+			}
+			else
+			{
+				if (cchMax < countof(szVerbW))
+					return(E_INVALIDARG);
+				SSStaticCpyW((LPWSTR)pszName, szVerbW);
+			}
 			return(S_OK);
 		}
 	}

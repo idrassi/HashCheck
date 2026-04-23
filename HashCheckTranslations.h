@@ -31,6 +31,7 @@
 #define IDS_HP_FILELABEL                0x4308
 
 #define IDS_HV_LOADERROR_FMT            0x4400
+#define IDS_HV_MENUTEXT                 0x440F
 #define IDS_HV_SUMMARY                  0x4401
 #define IDS_HV_MATCH                    0x4402
 #define IDS_HV_MISMATCH                 0x4403

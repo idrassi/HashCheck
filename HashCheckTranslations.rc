@@ -36,6 +36,7 @@ STRINGTABLE LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
 	// Strings used exclusively in the HashVerify module
 	IDS_HV_LOADERROR_FMT     "Cannot load ""%s"""      // %s == name of the checksum file
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Summary"
 	IDS_HV_MATCH             "Match:"
 	IDS_HV_MISMATCH          "Mismatch:"
@@ -98,6 +99,7 @@ STRINGTABLE LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL
 	IDS_HP_FILELABEL         "    File: "  // alternatively, "　　檔案: "
 
 	IDS_HV_LOADERROR_FMT     "無法載入 ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "摘要"
 	IDS_HV_MATCH             "符合："
 	IDS_HV_MISMATCH          "不符合："
@@ -159,6 +161,7 @@ STRINGTABLE LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 	IDS_HP_FILELABEL         "    File: "  // alternatively, "　　文件: "
 
 	IDS_HV_LOADERROR_FMT     "无法载入 ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "摘要"
 	IDS_HV_MATCH             "相符:"
 	IDS_HV_MISMATCH          "不符合:"
@@ -220,6 +223,7 @@ STRINGTABLE LANGUAGE LANG_CZECH, SUBLANG_DEFAULT
 	IDS_HP_FILELABEL         "  Soubor: "
 
 	IDS_HV_LOADERROR_FMT     "Nemohu načíst ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Souhrn"
 	IDS_HV_MATCH             "Shodné:"
 	IDS_HV_MISMATCH          "Odlišné:"
@@ -281,6 +285,7 @@ STRINGTABLE LANGUAGE LANG_GERMAN, SUBLANG_NEUTRAL
 	IDS_HP_FILELABEL         "   Datei: "
 
 	IDS_HV_LOADERROR_FMT     "Kann ""%s"" nicht öffnen"
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Report"
 	IDS_HV_MATCH             "Übereinstimmung:"
 	IDS_HV_MISMATCH          "Abweichung:"
@@ -342,6 +347,7 @@ STRINGTABLE LANGUAGE LANG_GREEK, SUBLANG_DEFAULT
 	IDS_HP_FILELABEL         "  Αρχείο: "
 
 	IDS_HV_LOADERROR_FMT     "Αδύνατο το φόρτωμα του «%s»"
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Σύνοψη"
 	IDS_HV_MATCH             "Ταιριάζουν:"
 	IDS_HV_MISMATCH          "Δεν ταιριάζουν:"
@@ -403,6 +409,7 @@ STRINGTABLE LANGUAGE LANG_SPANISH, SUBLANG_NEUTRAL
 	IDS_HP_FILELABEL         "  Nombre: "
 
 	IDS_HV_LOADERROR_FMT     "No se puede abrir ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Resumen"
 	IDS_HV_MATCH             "Correcto:"
 	IDS_HV_MISMATCH          "Incorrecto:"
@@ -464,6 +471,7 @@ STRINGTABLE LANGUAGE LANG_FRENCH, SUBLANG_NEUTRAL
 	IDS_HP_FILELABEL         "     Nom: "
 
 	IDS_HV_LOADERROR_FMT     "Impossible de charger ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Résumé"
 	IDS_HV_MATCH             "Correct:"
 	IDS_HV_MISMATCH          "Incorrect:"
@@ -525,6 +533,7 @@ STRINGTABLE LANGUAGE LANG_ITALIAN, SUBLANG_NEUTRAL
 	IDS_HP_FILELABEL         "    File: "
 
 	IDS_HV_LOADERROR_FMT     "Impossibile caricare ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Sommario"
 	IDS_HV_MATCH             "Completo:"
 	IDS_HV_MISMATCH          "Danneggiato:"
@@ -586,6 +595,7 @@ STRINGTABLE LANGUAGE LANG_JAPANESE, SUBLANG_DEFAULT
 	IDS_HP_FILELABEL         "    File: "  // alternatively, "  ﾌｧｲﾙ: "
 
 	IDS_HV_LOADERROR_FMT     """%s"" の読み込みに失敗します"
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "概略"
 	IDS_HV_MATCH             "一致:"
 	IDS_HV_MISMATCH          "不一致:"
@@ -647,6 +657,7 @@ STRINGTABLE LANGUAGE LANG_KOREAN, SUBLANG_DEFAULT
 	IDS_HP_FILELABEL         "    File: "
 
 	IDS_HV_LOADERROR_FMT     """%s"" 불러올 수 없음"
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "요약"
 	IDS_HV_MATCH             "일치:"
 	IDS_HV_MISMATCH          "불일치:"
@@ -708,6 +719,7 @@ STRINGTABLE LANGUAGE LANG_DUTCH, SUBLANG_NEUTRAL
 	IDS_HP_FILELABEL         "    Naam: "
 
 	IDS_HV_LOADERROR_FMT     "Kan ""%s"" niet openen"
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Samenvatting"
 	IDS_HV_MATCH             "Gelijk:"
 	IDS_HV_MISMATCH          "Ongelijk:"
@@ -769,6 +781,7 @@ STRINGTABLE LANGUAGE LANG_POLISH, SUBLANG_DEFAULT
 	IDS_HP_FILELABEL         "    Plik: "
 
 	IDS_HV_LOADERROR_FMT     "Nie mogę wczytać ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Sumowanie"
 	IDS_HV_MATCH             "Dopasowane:"
 	IDS_HV_MISMATCH          "Niezgodne:"
@@ -830,6 +843,7 @@ STRINGTABLE LANGUAGE LANG_PORTUGUESE, SUBLANG_PORTUGUESE_BRAZILIAN
 	IDS_HP_FILELABEL         "    Nome: "
 
 	IDS_HV_LOADERROR_FMT     "Impossível carregar ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Sumário"
 	IDS_HV_MATCH             "Iguais:"
 	IDS_HV_MISMATCH          "Diferentes:"
@@ -891,6 +905,7 @@ STRINGTABLE LANGUAGE LANG_PORTUGUESE, SUBLANG_PORTUGUESE
 	IDS_HP_FILELABEL         "    Nome: "
 
 	IDS_HV_LOADERROR_FMT     "Impossível carregar ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Summário"
 	IDS_HV_MATCH             "Igualável:"
 	IDS_HV_MISMATCH          "Inagualável:"
@@ -952,6 +967,7 @@ STRINGTABLE LANGUAGE LANG_ROMANIAN, SUBLANG_DEFAULT
 	IDS_HP_FILELABEL         "  Fişier: "
 
 	IDS_HV_LOADERROR_FMT     "Nu pot încărca ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Sumar"
 	IDS_HV_MATCH             "Potrivit:"
 	IDS_HV_MISMATCH          "Diferit:"
@@ -1013,6 +1029,7 @@ STRINGTABLE LANGUAGE LANG_RUSSIAN, SUBLANG_DEFAULT
 	IDS_HP_FILELABEL         "    Файл: "
 
 	IDS_HV_LOADERROR_FMT     "Невозможно открыть ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Результаты"
 	IDS_HV_MATCH             "Совпали:"
 	IDS_HV_MISMATCH          "Не совпали:"
@@ -1074,6 +1091,7 @@ STRINGTABLE LANGUAGE LANG_SWEDISH, SUBLANG_NEUTRAL
 	IDS_HP_FILELABEL         "     Fil: "
 
 	IDS_HV_LOADERROR_FMT     "Kan ej ladda ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Summering"
 	IDS_HV_MATCH             "Match:"
 	IDS_HV_MISMATCH          "Ej match:"
@@ -1135,6 +1153,7 @@ STRINGTABLE LANGUAGE LANG_TURKISH, SUBLANG_DEFAULT
 	IDS_HP_FILELABEL         "   Dosya: "
 
 	IDS_HV_LOADERROR_FMT     """%s"" açılamıyor"
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Özet"
 	IDS_HV_MATCH             "Karşılaştırma:"
 	IDS_HV_MISMATCH          "Uyumsuz:"
@@ -1196,6 +1215,7 @@ STRINGTABLE LANGUAGE LANG_UKRAINIAN, SUBLANG_DEFAULT
 	IDS_HP_FILELABEL         "    Файл: "
 
 	IDS_HV_LOADERROR_FMT     "Неможливо відкрити ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Результати"
 	IDS_HV_MATCH             "Співпали:"
 	IDS_HV_MISMATCH          "Не співпали:"
@@ -1257,6 +1277,7 @@ STRINGTABLE LANGUAGE LANG_CATALAN, SUBLANG_CATALAN_CATALAN
 	IDS_HP_FILELABEL         "  Fitxer: "
 
 	IDS_HV_LOADERROR_FMT     "No es pot carregar ""%s"""
+	IDS_HV_MENUTEXT          "Verify Checksum File"
 	IDS_HV_SUMMARY           "Resum"
 	IDS_HV_MATCH             "Coincideix:"
 	IDS_HV_MISMATCH          "No coincideix:"
