@@ -46,6 +46,7 @@ typedef struct {
 	UINT cPaths;
 	BOOL bHasSilentOption;
 	BOOL bBypassQueue;
+	BOOL bSeparateFiles;
 } CREATEOPTIONS, *PCREATEOPTIONS;
 
 static VOID ZeroBytes( PVOID pvBuffer, size_t cbBuffer )
@@ -314,6 +315,12 @@ static BOOL IsNoQueueOption( PCWSTR pszArg )
 	       IsCommand(pszArg, L"no-queue"));
 }
 
+static BOOL IsSeparateOption( PCWSTR pszArg )
+{
+	return(IsCommand(pszArg, L"separate") ||
+	       IsCommand(pszArg, L"separate-files"));
+}
+
 static BOOL HasSilentCreateOption( int argc, LPWSTR *argv, int iFirstArg )
 {
 	if (!argv)
@@ -452,6 +459,8 @@ static INT ShowUsage( )
 		NULL,
 		L"Create a checksum file:\n"
 		L"  HashCheckPackageHost.exe /create [/noqueue] <file-or-folder> [file-or-folder ...]\n\n"
+		L"Create one checksum file next to each selected file:\n"
+		L"  HashCheckPackageHost.exe /create /separate [/noqueue] <file-or-folder> [file-or-folder ...]\n\n"
 		L"Create a checksum file without UI:\n"
 		L"  HashCheckPackageHost.exe /create /output <checksum-file> [/hash sha256] [/encoding utf8|utf16|ansi] [/eol crlf|lf] [/noqueue] <file-or-folder> [...]\n\n"
 		L"Verify a checksum file:\n"
@@ -567,6 +576,10 @@ static HRESULT ParseCreateOptions( int argc, LPWSTR *argv, int iFirstArg, PCREAT
 		{
 			pOptions->bBypassQueue = TRUE;
 		}
+		else if (IsSeparateOption(argv[iArg]))
+		{
+			pOptions->bSeparateFiles = TRUE;
+		}
 		else if (*argv[iArg])
 		{
 			++pOptions->cPaths;
@@ -576,7 +589,7 @@ static HRESULT ParseCreateOptions( int argc, LPWSTR *argv, int iFirstArg, PCREAT
 	if (!pOptions->bHasSilentOption)
 		return(S_OK);
 
-	if (!pOptions->pszOutputPath || !pOptions->cPaths)
+	if (pOptions->bSeparateFiles || !pOptions->pszOutputPath || !pOptions->cPaths)
 		return(E_INVALIDARG);
 
 	if (!pOptions->iHashIndex)
@@ -624,7 +637,7 @@ static HRESULT WritePathListFileFromArgs( int argc, LPWSTR *argv, int iFirstPath
 
 	for (int iArg = iFirstPath; SUCCEEDED(hr) && iArg < argc; ++iArg)
 	{
-		if (IsNoQueueOption(argv[iArg]))
+		if (IsNoQueueOption(argv[iArg]) || IsSeparateOption(argv[iArg]))
 			continue;
 
 		size_t cchPath = 0;
@@ -823,14 +836,19 @@ static HASHCHECK_NOCF INT RunHashCheckDllVerbResult( PCSTR pszExportName, PWSTR 
 	return(iResult);
 }
 
-static INT RunCreateFromPaths( int argc, LPWSTR *argv, int iFirstPath, BOOL bBypassQueue )
+static INT RunCreateFromPaths( int argc, LPWSTR *argv, int iFirstPath, BOOL bSeparateFiles, BOOL bBypassQueue )
 {
 	WCHAR szListPath[MAX_PATH + 1];
 	HRESULT hr = WritePathListFileFromArgs(argc, argv, iFirstPath, szListPath, ARRAYSIZE(szListPath));
 	if (FAILED(hr))
 		return(hr == E_INVALIDARG ? ShowUsage() : ShowError(L"Preparing the checksum input list", hr));
 
-	INT iResult = RunHashCheckDllVerb(bBypassQueue ? "HashSaveNoQueue_RunDLLW" : "HashSave_RunDLLW", szListPath);
+	INT iResult = RunHashCheckDllVerb(
+		bSeparateFiles ?
+			(bBypassQueue ? "HashSaveSeparateNoQueue_RunDLLW" : "HashSaveSeparate_RunDLLW") :
+			(bBypassQueue ? "HashSaveNoQueue_RunDLLW" : "HashSave_RunDLLW"),
+		szListPath
+	);
 	if (iResult)
 		DeleteFileW(szListPath);
 
@@ -872,7 +890,7 @@ static INT RunCreateCommand( int argc, LPWSTR *argv, int iFirstArg )
 	if (options.bHasSilentOption)
 		return(RunCreateSilent(argc, argv, iFirstArg, &options));
 
-	return(RunCreateFromPaths(argc, argv, iFirstArg, options.bBypassQueue));
+	return(RunCreateFromPaths(argc, argv, iFirstArg, options.bSeparateFiles, options.bBypassQueue));
 }
 
 static INT RunVerifyCommand( int argc, LPWSTR *argv, int iFirstArg )
@@ -917,6 +935,10 @@ static INT HashCheckPackageHostMain( )
 	else if (argc == 3 && IsCommand(argv[1], L"hashcheck-create"))
 	{
 		iResult = RunHashCheckDllVerb("HashSave_RunDLLW", argv[2]);
+	}
+	else if (argc == 3 && IsCommand(argv[1], L"hashcheck-create-separate"))
+	{
+		iResult = RunHashCheckDllVerb("HashSaveSeparate_RunDLLW", argv[2]);
 	}
 	else if (argc == 3 && IsCommand(argv[1], L"hashcheck-verify"))
 	{

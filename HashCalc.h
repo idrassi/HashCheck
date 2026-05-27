@@ -74,6 +74,10 @@ typedef struct {
 	HSIMPLELIST        hListRaw;     // data from IShellExtInit
 	HSIMPLELIST        hList;        // our expanded/processed data
 	HANDLE             hFileOut;     // handle of the output file
+	BOOL               bSeparateFiles;// true iff saving to separate files
+	volatile LONG      cFileOutErrors;// number of output files that could not be written
+	WORD               wIfExists;    // iff bSeparateFiles, one of the IFEXISTS_* constants
+	BOOL               bIncludeChecksumFiles; // iff bSeparateFiles, hash checksum files as inputs
 	HFONT              hFont;        // fixed-width font for the results box: handle
 	WNDPROC            wpSearchBox;  // original WNDPROC for the HashProp search box
 	WNDPROC            wpResultsBox; // original WNDPROC for the HashProp results box
@@ -103,14 +107,22 @@ typedef struct {
 	TCHAR szPath[];                  // unaltered path
 } HASHCALCITEM, *PHASHCALCITEM;
 
+#define IFEXISTS_KEEP        0
+#define IFEXISTS_OVERWRITE   1
+
 // Public functions
 BOOL WINAPI HashCalcPrepare( PHASHCALCCONTEXT phcctx );
 VOID WINAPI HashCalcInitSave( PHASHCALCCONTEXT phcctx );
+VOID WINAPI HashCalcInitSaveSeparate( PHASHCALCCONTEXT phcctx );
 BOOL WINAPI HashCalcInitSaveToFile( PHASHCALCCONTEXT phcctx, PTSTR pszSaveFile,
                                     UINT uFilterIndex, INT iSaveEncoding,
                                     INT iSaveEol );
+BOOL WINAPI HashCalcBuildSeparateOutputPath( PHASHCALCCONTEXT phcctx, PCTSTR pszPath,
+                                             PTSTR pszOutputPath, UINT cchOutputPath );
 VOID WINAPI HashCalcSetSaveFormat( PHASHCALCCONTEXT phcctx );
 BOOL WINAPI HashCalcWriteResult( PHASHCALCCONTEXT phcctx, PHASHCALCITEM pItem );
+BOOL WINAPI HashCalcWriteResultToFile( PHASHCALCCONTEXT phcctx, HANDLE hFileOut,
+                                       PHASHCALCITEM pItem, PBOOL pbHashValid );
 VOID WINAPI HashCalcClearInvalid( PWHRESULTEX pwhres, WCHAR cInvalid );
 BOOL WINAPI HashCalcDeleteFileByHandle( HANDLE hFile );
 VOID WINAPI HashCalcTogglePrep( PHASHCALCCONTEXT phcctx, BOOL bState );

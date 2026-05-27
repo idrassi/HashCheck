@@ -13,8 +13,9 @@
 
 enum HASHCHECK_EXPLORER_COMMAND {
 	HCEC_CREATE = 0,
-	HCEC_VERIFY = 1,
-	HCEC_OPTIONS = 2
+	HCEC_CREATE_SEPARATE = 1,
+	HCEC_VERIFY = 2,
+	HCEC_OPTIONS = 3
 };
 
 class CHashCheckExplorerCommand : public IExplorerCommand, public IObjectWithSite, public IObjectWithSelection

@@ -20,6 +20,13 @@ Paths supplied without a command are treated as `/create`, so dragging files or
 folders onto `HashCheckPackageHost.exe` opens the normal HashCheck save dialog.
 The same launcher also supports `/verify <checksum-file>` and `/options`.
 
+To create one checksum file next to each selected file, use `/separate`. This
+opens the same interactive hash-type dialog as Explorer:
+
+```text
+"%ProgramFiles%\HashCheck\HashCheckPackageHost.exe" /create /separate [/noqueue] "C:\path\to\file-or-folder" ["C:\another\path" ...]
+```
+
 To create a checksum file without showing the save/progress UI, provide an
 output path. The hash is inferred from the output extension when possible and
 falls back to SHA-256 otherwise:

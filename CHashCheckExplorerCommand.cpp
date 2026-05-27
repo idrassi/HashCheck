@@ -76,6 +76,9 @@ static UINT GetCommandTitleStringID( HASHCHECK_EXPLORER_COMMAND command )
 {
 	switch (command)
 	{
+		case HCEC_CREATE_SEPARATE:
+			return(IDS_HS_MENUTEXT_SEP);
+
 		case HCEC_VERIFY:
 			return(IDS_HV_MENUTEXT);
 
@@ -91,6 +94,9 @@ static const GUID *GetCommandCanonicalName( HASHCHECK_EXPLORER_COMMAND command )
 {
 	switch (command)
 	{
+		case HCEC_CREATE_SEPARATE:
+			return(&CLSID_HashCheckExplorerCreateSeparate);
+
 		case HCEC_VERIFY:
 			return(&CLSID_HashCheckExplorerVerify);
 
@@ -142,6 +148,32 @@ static BOOL HasSelection( IShellItemArray *psia, DWORD *pcItems )
 		*pcItems = cItems;
 
 	return(TRUE);
+}
+
+static BOOL IsDirectorySelectionItem( IShellItemArray *psia, DWORD iItem )
+{
+	if (!psia)
+		return(FALSE);
+
+	IShellItem *pItem = NULL;
+	HRESULT hr = psia->GetItemAt(iItem, &pItem);
+	if (FAILED(hr))
+		return(FALSE);
+
+	SFGAOF sfgao = 0;
+	hr = pItem->GetAttributes(SFGAO_FOLDER, &sfgao);
+	pItem->Release();
+
+	return(SUCCEEDED(hr) && (sfgao & SFGAO_FOLDER));
+}
+
+static BOOL HasSeparateCreateSelection( IShellItemArray *psia )
+{
+	DWORD cItems = 0;
+	if (!HasSelection(psia, &cItems))
+		return(FALSE);
+
+	return(cItems > 1 || IsDirectorySelectionItem(psia, 0));
 }
 
 static BOOL HasSingleChecksumFileSelection( IShellItemArray *psia, BOOL bCheckAttributes )
@@ -353,6 +385,7 @@ static HRESULT LaunchPackageHost( PCWSTR pszVerb, PCWSTR pszArgument )
 
 typedef struct {
 	IStream *pstmShellItemArray;
+	BOOL bSeparateFiles;
 } HCEC_CREATE_THREAD_CONTEXT, *PHCEC_CREATE_THREAD_CONTEXT;
 
 static DWORD WINAPI CreateCommandThread( PHCEC_CREATE_THREAD_CONTEXT pctx )
@@ -376,7 +409,7 @@ static DWORD WINAPI CreateCommandThread( PHCEC_CREATE_THREAD_CONTEXT pctx )
 			hr = WritePathListFile(psia, szListPath, countof(szListPath));
 			if (SUCCEEDED(hr))
 			{
-				hr = LaunchPackageHost(L"/hashcheck-create", szListPath);
+				hr = LaunchPackageHost(pctx->bSeparateFiles ? L"/hashcheck-create-separate" : L"/hashcheck-create", szListPath);
 				if (FAILED(hr))
 					DeleteFileW(szListPath);
 			}
@@ -397,7 +430,7 @@ static DWORD WINAPI CreateCommandThread( PHCEC_CREATE_THREAD_CONTEXT pctx )
 	return(0);
 }
 
-static HRESULT StartCreateCommandThread( IShellItemArray *psia )
+static HRESULT StartCreateCommandThread( IShellItemArray *psia, BOOL bSeparateFiles )
 {
 	if (!psia)
 		return(E_INVALIDARG);
@@ -407,6 +440,7 @@ static HRESULT StartCreateCommandThread( IShellItemArray *psia )
 		return(E_OUTOFMEMORY);
 
 	pctx->pstmShellItemArray = NULL;
+	pctx->bSeparateFiles = bSeparateFiles;
 
 	HRESULT hr = CoMarshalInterThreadInterfaceInStream(
 		IID_IShellItemArray,
@@ -547,6 +581,11 @@ STDMETHODIMP CHashCheckExplorerCommand::GetState( IShellItemArray *psia, BOOL fO
 		if (HasSingleChecksumFileSelection(psia, TRUE))
 			*pCmdState = ECS_ENABLED;
 	}
+	else if (m_command == HCEC_CREATE_SEPARATE)
+	{
+		if (cItems > 1 || IsDirectorySelectionItem(psia, 0))
+			*pCmdState = ECS_ENABLED;
+	}
 	else
 	{
 		*pCmdState = ECS_ENABLED;
@@ -578,7 +617,10 @@ STDMETHODIMP CHashCheckExplorerCommand::Invoke( IShellItemArray *psia, IBindCtx 
 	if (!HasSelection(psia, NULL))
 		return(E_INVALIDARG);
 
-	return(StartCreateCommandThread(psia));
+	if (m_command == HCEC_CREATE_SEPARATE && !HasSeparateCreateSelection(psia))
+		return(E_INVALIDARG);
+
+	return(StartCreateCommandThread(psia, m_command == HCEC_CREATE_SEPARATE));
 }
 
 STDMETHODIMP CHashCheckExplorerCommand::GetFlags( EXPCMDFLAGS *pFlags )

@@ -42,10 +42,12 @@ extern UINT16 g_uWinVer;
 // Define the data and strings used for COM registration
 static const GUID CLSID_HashCheck = { 0x705977c7, 0x86cb, 0x4743, { 0xbf, 0xaf, 0x69, 0x08, 0xbd, 0x19, 0xb7, 0xb0 } };
 static const GUID CLSID_HashCheckExplorerCreate = { 0xdb56d393, 0xfc0e, 0x4f46, { 0x9c, 0x82, 0xec, 0x60, 0x1e, 0x6a, 0xb6, 0xaa } };
+static const GUID CLSID_HashCheckExplorerCreateSeparate = { 0x2263623b, 0x7700, 0x4fac, { 0xae, 0x98, 0x32, 0xba, 0xa9, 0xfb, 0xc8, 0x2d } };
 static const GUID CLSID_HashCheckExplorerVerify = { 0xd07a4f30, 0xd6f6, 0x4e0b, { 0x93, 0x61, 0xe3, 0x03, 0x9e, 0xdb, 0x15, 0xff } };
 static const GUID CLSID_HashCheckExplorerOptions = { 0xf92dbf1d, 0x6398, 0x405c, { 0xbc, 0xb5, 0x13, 0x87, 0x08, 0x8a, 0x9e, 0x7f } };
 #define CLSID_STR_HashCheck         TEXT("{705977C7-86CB-4743-BFAF-6908BD19B7B0}")
 #define CLSID_STR_HashCheckExplorerCreate TEXT("{DB56D393-FC0E-4F46-9C82-EC601E6AB6AA}")
+#define CLSID_STR_HashCheckExplorerCreateSeparate TEXT("{2263623B-7700-4FAC-AE98-32BAA9FBC82D}")
 #define CLSID_STR_HashCheckExplorerVerify TEXT("{D07A4F30-D6F6-4E0B-9361-E3039EDB15FF}")
 #define CLSID_STR_HashCheckExplorerOptions TEXT("{F92DBF1D-6398-405C-BCB5-1387088A9E7F}")
 #define CLSNAME_STR_HashCheck       TEXT("HashCheck Shell Extension")

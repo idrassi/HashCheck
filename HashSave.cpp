@@ -55,7 +55,7 @@ typedef struct {
 \*============================================================================*/
 
 // Entry points / main functions
-VOID CALLBACK HashSaveRunDllEx( HWND hWnd, PWSTR pszCmdLine, BOOL bBypassQueue );
+VOID CALLBACK HashSaveRunDllEx( HWND hWnd, PWSTR pszCmdLine, BOOL bSeparateFiles, BOOL bBypassQueue );
 INT CALLBACK HashSaveSilentRunDllEx( HWND hWnd, PWSTR pszCmdLine, BOOL bBypassQueue );
 DWORD WINAPI HashSaveThread( PHASHSAVECONTEXT phsctx );
 HSIMPLELIST WINAPI HashSaveLoadPathListFile( PWSTR pszPathListFile );
@@ -68,6 +68,7 @@ HRESULT WINAPI HashSaveRunSilent( HWND hWndOwner, PHASHSAVESILENTSPEC pSpec );
 
 // Worker thread
 VOID __fastcall HashSaveWorkerMain( PHASHSAVECONTEXT phsctx );
+BOOL WINAPI HashSaveWriteSeparateResult( PHASHSAVECONTEXT phsctx, PHASHSAVEITEM pItem );
 
 // Dialog general
 INT_PTR CALLBACK HashSaveDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
@@ -81,15 +82,25 @@ VOID WINAPI HashSaveDlgInit( PHASHSAVECONTEXT phsctx );
 
 VOID CALLBACK HashSave_RunDLLW( HWND hWnd, HINSTANCE, PWSTR pszCmdLine, INT )
 {
-	HashSaveRunDllEx(hWnd, pszCmdLine, FALSE);
+	HashSaveRunDllEx(hWnd, pszCmdLine, FALSE, FALSE);
 }
 
 VOID CALLBACK HashSaveNoQueue_RunDLLW( HWND hWnd, HINSTANCE, PWSTR pszCmdLine, INT )
 {
-	HashSaveRunDllEx(hWnd, pszCmdLine, TRUE);
+	HashSaveRunDllEx(hWnd, pszCmdLine, FALSE, TRUE);
 }
 
-VOID CALLBACK HashSaveRunDllEx( HWND hWnd, PWSTR pszCmdLine, BOOL bBypassQueue )
+VOID CALLBACK HashSaveSeparate_RunDLLW( HWND hWnd, HINSTANCE, PWSTR pszCmdLine, INT )
+{
+	HashSaveRunDllEx(hWnd, pszCmdLine, TRUE, FALSE);
+}
+
+VOID CALLBACK HashSaveSeparateNoQueue_RunDLLW( HWND hWnd, HINSTANCE, PWSTR pszCmdLine, INT )
+{
+	HashSaveRunDllEx(hWnd, pszCmdLine, TRUE, TRUE);
+}
+
+VOID CALLBACK HashSaveRunDllEx( HWND hWnd, PWSTR pszCmdLine, BOOL bSeparateFiles, BOOL bBypassQueue )
 {
 	HSIMPLELIST hListRaw = HashSaveLoadPathListFile(pszCmdLine);
 	if (hListRaw)
@@ -97,6 +108,8 @@ VOID CALLBACK HashSaveRunDllEx( HWND hWnd, PWSTR pszCmdLine, BOOL bBypassQueue )
 		PHASHSAVECONTEXT phsctx = HashSaveCreateContext(hWnd, hListRaw);
 		if (phsctx && bBypassQueue)
 			phsctx->dwFlags |= HCF_BYPASS_QUEUE;
+		if (phsctx)
+			phsctx->bSeparateFiles = bSeparateFiles;
 		if (phsctx)
 			HashSaveThread(phsctx);
 
@@ -129,7 +142,7 @@ INT CALLBACK HashSaveSilentRunDllEx( HWND hWnd, PWSTR pszCmdLine, BOOL bBypassQu
 	return((INT)hr);
 }
 
-VOID WINAPI HashSaveStart( HWND hWndOwner, HSIMPLELIST hListRaw )
+VOID WINAPI HashSaveStart( HWND hWndOwner, HSIMPLELIST hListRaw, BOOL bSeparateFiles )
 {
 	// Explorer will be blocking as long as this function is running, so we
 	// want to return as quickly as possible and leave the work up to the
@@ -139,6 +152,8 @@ VOID WINAPI HashSaveStart( HWND hWndOwner, HSIMPLELIST hListRaw )
 
 	if (phsctx)
 	{
+		phsctx->bSeparateFiles = bSeparateFiles;
+
 		if (HashSaveStartThread(phsctx))
 			return;
 
@@ -515,20 +530,28 @@ DWORD WINAPI HashSaveThread( PHASHSAVECONTEXT phsctx )
 	ULONG_PTR uActCtxCookie = ActivateManifest(TRUE);
 	ULONG_PTR uHostCookie = HostAddRef();
 
-	// Calling HashCalcPrepare with a NULL hList will cause it to calculate
-	// and set cchPrefix, but it will not copy the data or walk the directories
-	// (we will leave that for the worker thread to do); the reason we do a
-	// limited scan now is so that we can show the file dialog (which requires
-	// cchPrefix for the automatic name generation) as soon as possible
 	phsctx->status = INACTIVE;
-	phsctx->hList = NULL;
-	HashCalcPrepare(phsctx);
-
-	// Get a file name from the user
 	ZeroMemory(&phsctx->ofn, sizeof(phsctx->ofn));
-	HashCalcInitSave(phsctx);
 
-	if (phsctx->hFileOut != INVALID_HANDLE_VALUE)
+	if (phsctx->bSeparateFiles)
+	{
+		HashCalcInitSaveSeparate(phsctx);
+	}
+	else
+	{
+		// Calling HashCalcPrepare with a NULL hList will cause it to calculate
+		// and set cchPrefix, but it will not copy the data or walk the directories
+		// (we will leave that for the worker thread to do); the reason we do a
+		// limited scan now is so that we can show the file dialog (which requires
+		// cchPrefix for the automatic name generation) as soon as possible
+		phsctx->hList = NULL;
+		HashCalcPrepare(phsctx);
+
+		// Get a file name from the user
+		HashCalcInitSave(phsctx);
+	}
+
+	if (phsctx->bSeparateFiles ? phsctx->ofn.nFilterIndex : (phsctx->hFileOut != INVALID_HANDLE_VALUE))
 	{
         BOOL bDeletionFailed = TRUE;
 		if (phsctx->hList = SLCreateEx(TRUE))
@@ -544,11 +567,21 @@ DWORD WINAPI HashSaveThread( PHASHSAVECONTEXT phsctx )
 			SLRelease(phsctx->hList);
 		}
 
-		CloseHandle(phsctx->hFileOut);
+		if (!phsctx->bSeparateFiles)
+		{
+			CloseHandle(phsctx->hFileOut);
 
-        // Should only happen on Windows XP
-        if (bDeletionFailed)
-            DeleteFile(phsctx->ofn.lpstrFile);
+			// Should only happen on Windows XP
+			if (bDeletionFailed)
+				DeleteFile(phsctx->ofn.lpstrFile);
+		}
+
+		if (phsctx->cFileOutErrors)
+		{
+			TCHAR szMessage[MAX_STRINGMSG];
+			LoadString(g_hModThisDll, IDS_HC_SAVE_ERROR, szMessage, countof(szMessage));
+			MessageBox(NULL, szMessage, NULL, MB_OK | MB_ICONERROR);
+		}
 	}
 
 	// This must be the last thing that we free, since this is what supports
@@ -729,11 +762,24 @@ VOID __fastcall HashSaveWorkerMain( PHASHSAVECONTEXT phsctx )
         );
 
         for (PHASHSAVEITEM pItem : vecpItems)
-            HashCalcWriteResult(phsctx, pItem);
+		{
+			if (phsctx->status == CANCEL_REQUESTED)
+				break;
+
+			if (phsctx->bSeparateFiles)
+			{
+				if (!HashSaveWriteSeparateResult(phsctx, pItem))
+					InterlockedIncrement(&phsctx->cFileOutErrors);
+			}
+			else
+			{
+				HashCalcWriteResult(phsctx, pItem);
+			}
+		}
     }
 
 #ifdef _TIMED
-    if (bHashingCompleted && phsctx->cTotal > 1 && phsctx->status != CANCEL_REQUESTED)
+    if (bHashingCompleted && phsctx->cTotal > 1 && phsctx->status != CANCEL_REQUESTED && !phsctx->bSeparateFiles)
     {
         union {
             CHAR  szA[MAX_STRINGMSG];
@@ -782,6 +828,71 @@ VOID __fastcall HashSaveWorkerMain( PHASHSAVECONTEXT phsctx )
 }
 
 
+BOOL WINAPI HashSaveWriteSeparateResult( PHASHSAVECONTEXT phsctx, PHASHSAVEITEM pItem )
+{
+	TCHAR szOutputPath[MAX_PATH_BUFFER + 16];
+	HANDLE hFileOut = INVALID_HANDLE_VALUE;
+
+	if (!HashCalcBuildSeparateOutputPath(phsctx, pItem->szPath, szOutputPath, countof(szOutputPath)))
+	{
+		return(FALSE);
+	}
+
+	DWORD dwCreationDisposition =
+		phsctx->wIfExists == IFEXISTS_OVERWRITE ? CREATE_ALWAYS : CREATE_NEW;
+
+	hFileOut = CreateFileWithLongPathRetry(
+		szOutputPath,
+		FILE_APPEND_DATA | DELETE,
+		FILE_SHARE_READ,
+		NULL,
+		dwCreationDisposition,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL
+	);
+
+	if (hFileOut == INVALID_HANDLE_VALUE)
+	{
+		if (phsctx->wIfExists == IFEXISTS_KEEP && GetLastError() == ERROR_FILE_EXISTS)
+			return(TRUE);
+
+		return(FALSE);
+	}
+
+	if (phsctx->opt.dwSaveEncoding == 1)
+	{
+		WCHAR BOM = 0xFEFF;
+		DWORD cbWritten = 0;
+		if (!WriteFile(hFileOut, &BOM, sizeof(WCHAR), &cbWritten, NULL) ||
+		    cbWritten != sizeof(WCHAR))
+		{
+			goto fail_and_delete;
+		}
+	}
+
+	if (phsctx->status == CANCEL_REQUESTED)
+		goto cancel_and_delete;
+
+	if (!HashCalcWriteResultToFile(phsctx, hFileOut, pItem, NULL))
+		goto fail_and_delete;
+
+	CloseHandle(hFileOut);
+	return(TRUE);
+
+cancel_and_delete:
+	HashCalcDeleteFileByHandle(hFileOut);
+	CloseHandle(hFileOut);
+	DeleteFile(szOutputPath);
+	return(TRUE);
+
+fail_and_delete:
+	HashCalcDeleteFileByHandle(hFileOut);
+	CloseHandle(hFileOut);
+	DeleteFile(szOutputPath);
+	return(FALSE);
+}
+
+
 
 /*============================================================================*\
 	Dialog general
@@ -811,7 +922,7 @@ INT_PTR CALLBACK HashSaveDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 			if (!phsctx->hThread)
 			{
 				WorkerThreadCleanup((PCOMMONCONTEXT)phsctx);
-                BOOL bDeleted = HashCalcDeleteFileByHandle(phsctx->hFileOut);
+                BOOL bDeleted = phsctx->bSeparateFiles ? TRUE : HashCalcDeleteFileByHandle(phsctx->hFileOut);
 				EndDialog(hWnd, bDeleted);
 				return(TRUE);
 			}
@@ -894,7 +1005,8 @@ INT_PTR CALLBACK HashSaveDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					WorkerThreadCleanup((PCOMMONCONTEXT)phsctx);
 
                     // Don't keep partially generated checksum files
-                    BOOL bDeleted = HashCalcDeleteFileByHandle(phsctx->hFileOut);
+                    BOOL bDeleted = phsctx->bSeparateFiles ? TRUE : HashCalcDeleteFileByHandle(phsctx->hFileOut);
+					phsctx->cFileOutErrors = 0;
 
 					EndDialog(hWnd, bDeleted);
 					break;
@@ -972,10 +1084,26 @@ VOID WINAPI HashSaveDlgInit( PHASHSAVECONTEXT phsctx )
 
 	// Set the window icon and title
 	{
-		PTSTR pszFileName = phsctx->ofn.lpstrFile + phsctx->ofn.nFileOffset;
-		TCHAR szFormat[MAX_STRINGRES];
-		LoadString(g_hModThisDll, IDS_HS_TITLE_FMT, szFormat, countof(szFormat));
-		StringCchPrintf(phsctx->scratch.sz, countof(phsctx->scratch.sz), szFormat, pszFileName);
+		if (phsctx->bSeparateFiles)
+		{
+			LoadString(g_hModThisDll, IDS_HS_MENUTEXT_SEP, phsctx->scratch.sz, countof(phsctx->scratch.sz));
+			PTSTR pszSrc = phsctx->scratch.sz;
+			PTSTR pszDest = phsctx->scratch.sz;
+			while (*pszSrc && *pszSrc != TEXT('(') && *pszSrc != TEXT('.'))
+			{
+				if (*pszSrc != TEXT('&'))
+					*pszDest++ = *pszSrc;
+				++pszSrc;
+			}
+			*pszDest = 0;
+		}
+		else
+		{
+			PTSTR pszFileName = phsctx->ofn.lpstrFile + phsctx->ofn.nFileOffset;
+			TCHAR szFormat[MAX_STRINGRES];
+			LoadString(g_hModThisDll, IDS_HS_TITLE_FMT, szFormat, countof(szFormat));
+			StringCchPrintf(phsctx->scratch.sz, countof(phsctx->scratch.sz), szFormat, pszFileName);
+		}
 
 		SendMessage(
 			hWnd,
@@ -997,6 +1125,7 @@ VOID WINAPI HashSaveDlgInit( PHASHSAVECONTEXT phsctx )
 		DWORD dwQueueFlags = phsctx->dwFlags & HCF_BYPASS_QUEUE;
 		phsctx->dwFlags = dwQueueFlags;
 		phsctx->cTotal = 0;
+		phsctx->cFileOutErrors = 0;
         phsctx->hThread = NULL;
         phsctx->hUnpauseEvent = NULL;
     }

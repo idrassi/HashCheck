@@ -18,6 +18,12 @@
 #define IDS_HS_QUEUED                   IDS_HC_QUEUED
 #define IDS_HS_RUN_NOW                  IDS_HC_RUN_NOW
 #define IDS_HS_CANCEL                   IDS_HC_CANCEL
+#define IDS_HS_MENUTEXT_SEP             0x4600
+#define IDS_HS_SEP_CHK                  0x4601
+#define IDS_HS_SEP_EX                   0x4602
+#define IDS_HS_SEP_EX_KEEP              0x4603
+#define IDS_HS_SEP_EX_OVERWRITE         0x4604
+#define IDS_HS_SEP_INCLUDE_CHECKSUMS    0x4605
 
 #define IDS_HP_TITLE                    0x4300
 #define IDS_HP_STATUSBOX                0x4301

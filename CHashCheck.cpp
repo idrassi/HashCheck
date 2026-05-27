@@ -18,7 +18,8 @@
 
 enum {
 	HC_CMD_VERIFY = 0,
-	HC_CMD_CREATE = 1
+	HC_CMD_CREATE = 1,
+	HC_CMD_CREATE_SEPARATE = 2
 };
 
 static BOOL IsChecksumFilePath( PCTSTR pszPath )
@@ -90,6 +91,8 @@ CHashCheck::CHashCheck( )
     m_cRef = 1;
     m_hList = NULL;
     m_bCanVerify = FALSE;
+    m_bCanCreateSeparate = FALSE;
+    m_cItems = 0;
     m_hMenuBitmap = g_uWinVer >= 0x0600 ?  // Vista+
         (HBITMAP)LoadImage(g_hModThisDll, MAKEINTRESOURCE(IDI_MENUBITMAP), IMAGE_BITMAP, 0, 0, LR_DEFAULTSIZE | LR_CREATEDIBSECTION) :
         NULL;
@@ -136,6 +139,8 @@ STDMETHODIMP CHashCheck::Initialize( LPCITEMIDLIST pidlFolder, LPDATAOBJECT pdto
 	SLRelease(m_hList);
 	m_hList = SLCreate();
 	m_bCanVerify = FALSE;
+	m_bCanCreateSeparate = FALSE;
+	m_cItems = 0;
 
 	// This indent exists to facilitate diffing against the CmdOpen source
 	{
@@ -153,12 +158,22 @@ STDMETHODIMP CHashCheck::Initialize( LPCITEMIDLIST pidlFolder, LPDATAOBJECT pdto
 			{
 				if (DragQueryFile(hDrop, uDrop, szPath, countof(szPath)))
 				{
-					SLAddStringI(m_hList, szPath);
+					if (SLAddStringI(m_hList, szPath))
+						++m_cItems;
 				}
 			}
 
 			if (uDrops == 1 && DragQueryFile(hDrop, 0, szPath, countof(szPath)))
+			{
 				m_bCanVerify = IsChecksumFilePath(szPath);
+				DWORD dwAttributes = GetFileAttributes(szPath);
+				m_bCanCreateSeparate = (dwAttributes != INVALID_FILE_ATTRIBUTES) &&
+				                       (dwAttributes & FILE_ATTRIBUTE_DIRECTORY);
+			}
+			else if (uDrops > 1)
+			{
+				m_bCanCreateSeparate = TRUE;
+			}
 
 			GlobalUnlock(medium.hGlobal);
 		}
@@ -190,7 +205,9 @@ STDMETHODIMP CHashCheck::QueryContextMenu( HMENU hmenu, UINT indexMenu, UINT idC
 	if (opt.dwMenuDisplay == 2 || (opt.dwMenuDisplay == 1 && !(uFlags & CMF_EXTENDEDVERBS)))
 		return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 0));
 
-	UINT cCommands = m_bCanVerify ? 2 : 1;
+	UINT uCreateCmd = m_bCanVerify ? HC_CMD_CREATE : HC_CMD_VERIFY;
+	UINT uCreateSeparateCmd = uCreateCmd + 1;
+	UINT cCommands = 1 + (m_bCanVerify ? 1 : 0) + (m_bCanCreateSeparate ? 1 : 0);
 	if (idCmdFirst + cCommands - 1 > idCmdLast)
 		return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 0));
 
@@ -220,10 +237,21 @@ STDMETHODIMP CHashCheck::QueryContextMenu( HMENU hmenu, UINT indexMenu, UINT idC
 	TCHAR szCreateMenuText[MAX_STRINGMSG];
 	LoadString(g_hModThisDll, IDS_HS_MENUTEXT, szCreateMenuText, countof(szCreateMenuText));
 
-	mii.wID        = idCmdFirst + (m_bCanVerify ? HC_CMD_CREATE : HC_CMD_VERIFY);
+	mii.wID        = idCmdFirst + uCreateCmd;
 	mii.dwTypeData = szCreateMenuText;
 	if (! InsertMenuItem(hmenu, uMenuPos++, TRUE, &mii))
 		return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 0));
+
+	if (m_bCanCreateSeparate)
+	{
+		TCHAR szCreateSeparateMenuText[MAX_STRINGMSG];
+		LoadString(g_hModThisDll, IDS_HS_MENUTEXT_SEP, szCreateSeparateMenuText, countof(szCreateSeparateMenuText));
+
+		mii.wID        = idCmdFirst + uCreateSeparateCmd;
+		mii.dwTypeData = szCreateSeparateMenuText;
+		if (! InsertMenuItem(hmenu, uMenuPos++, TRUE, &mii))
+			return(MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 0));
+	}
 
     InsertMenu(hmenu, uMenuPos, MF_SEPARATOR | MF_BYPOSITION, 0, NULL);
 
@@ -268,11 +296,21 @@ STDMETHODIMP CHashCheck::InvokeCommand( LPCMINVOKECOMMANDINFO pici )
 		return(S_OK);
 	}
 
-	if (idCmd != (m_bCanVerify ? HC_CMD_CREATE : HC_CMD_VERIFY))
+	UINT uCreateCmd = m_bCanVerify ? HC_CMD_CREATE : HC_CMD_VERIFY;
+	UINT uCreateSeparateCmd = uCreateCmd + 1;
+	BOOL bSeparateFiles = FALSE;
+
+	if (m_bCanCreateSeparate && idCmd == uCreateSeparateCmd)
+	{
+		bSeparateFiles = TRUE;
+	}
+	else if (idCmd != uCreateCmd)
+	{
 		return(E_INVALIDARG);
+	}
 
 	// Hand things over to HashSave, where all the work is done...
-	HashSaveStart(pici->hwnd, m_hList);
+	HashSaveStart(pici->hwnd, m_hList, bSeparateFiles);
 
 	// HashSave has AddRef'ed and now owns our list
 	SLRelease(m_hList);
@@ -285,15 +323,21 @@ STDMETHODIMP CHashCheck::GetCommandString( UINT_PTR idCmd, UINT uFlags, UINT *pw
 {
 	static const  CHAR szVerbA[] =  "cksum";
 	static const WCHAR szVerbW[] = L"cksum";
+	static const  CHAR szVerbSepA[] =  "cksumsep";
+	static const WCHAR szVerbSepW[] = L"cksumsep";
 	static const  CHAR szVerifyVerbA[] =  "verifychecksum";
 	static const WCHAR szVerifyVerbW[] = L"verifychecksum";
 
+	UINT uCreateCmd = m_bCanVerify ? HC_CMD_CREATE : HC_CMD_VERIFY;
+	UINT uCreateSeparateCmd = uCreateCmd + 1;
 	BOOL bVerifyCommand = m_bCanVerify && idCmd == HC_CMD_VERIFY;
-	BOOL bCreateCommand = idCmd == (m_bCanVerify ? HC_CMD_CREATE : HC_CMD_VERIFY);
-	if (!bVerifyCommand && !bCreateCommand)
+	BOOL bCreateCommand = idCmd == uCreateCmd;
+	BOOL bCreateSeparateCommand = m_bCanCreateSeparate && idCmd == uCreateSeparateCmd;
+	if (!bVerifyCommand && !bCreateCommand && !bCreateSeparateCommand)
 		return(E_INVALIDARG);
 
-	UINT uStringID = bVerifyCommand ? IDS_HV_MENUTEXT : IDS_HS_MENUTEXT;
+	UINT uStringID = bVerifyCommand ? IDS_HV_MENUTEXT :
+	                 (bCreateSeparateCommand ? IDS_HS_MENUTEXT_SEP : IDS_HS_MENUTEXT);
 
 	switch (uFlags)
 	{
@@ -318,6 +362,12 @@ STDMETHODIMP CHashCheck::GetCommandString( UINT_PTR idCmd, UINT uFlags, UINT *pw
 					return(E_INVALIDARG);
 				SSStaticCpyA((LPSTR)pszName, szVerifyVerbA);
 			}
+			else if (bCreateSeparateCommand)
+			{
+				if (cchMax < countof(szVerbSepA))
+					return(E_INVALIDARG);
+				SSStaticCpyA((LPSTR)pszName, szVerbSepA);
+			}
 			else
 			{
 				if (cchMax < countof(szVerbA))
@@ -334,6 +384,12 @@ STDMETHODIMP CHashCheck::GetCommandString( UINT_PTR idCmd, UINT uFlags, UINT *pw
 				if (cchMax < countof(szVerifyVerbW))
 					return(E_INVALIDARG);
 				SSStaticCpyW((LPWSTR)pszName, szVerifyVerbW);
+			}
+			else if (bCreateSeparateCommand)
+			{
+				if (cchMax < countof(szVerbSepW))
+					return(E_INVALIDARG);
+				SSStaticCpyW((LPWSTR)pszName, szVerbSepW);
 			}
 			else
 			{

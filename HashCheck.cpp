@@ -124,6 +124,10 @@ STDAPI DllGetClassObject( REFCLSID rclsid, REFIID riid, LPVOID *ppv )
 	{
 		classObject = HCCO_EXPLORER_CREATE;
 	}
+	else if (IsEqualIID(rclsid, CLSID_HashCheckExplorerCreateSeparate))
+	{
+		classObject = HCCO_EXPLORER_CREATE_SEPARATE;
+	}
 	else if (IsEqualIID(rclsid, CLSID_HashCheckExplorerVerify))
 	{
 		classObject = HCCO_EXPLORER_VERIFY;

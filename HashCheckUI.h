@@ -18,9 +18,11 @@ extern "C" {
 HANDLE __fastcall CreateThreadCRT( PVOID pThreadProc, PVOID pvParam );
 
 // HashSave
-VOID WINAPI HashSaveStart( HWND hWndOwner, HSIMPLELIST hListInput );
+VOID WINAPI HashSaveStart( HWND hWndOwner, HSIMPLELIST hListInput, BOOL bSeparateFiles );
 VOID CALLBACK HashSave_RunDLLW( HWND hWnd, HINSTANCE hInstance, PWSTR pszCmdLine, INT nCmdShow );
 VOID CALLBACK HashSaveNoQueue_RunDLLW( HWND hWnd, HINSTANCE hInstance, PWSTR pszCmdLine, INT nCmdShow );
+VOID CALLBACK HashSaveSeparate_RunDLLW( HWND hWnd, HINSTANCE hInstance, PWSTR pszCmdLine, INT nCmdShow );
+VOID CALLBACK HashSaveSeparateNoQueue_RunDLLW( HWND hWnd, HINSTANCE hInstance, PWSTR pszCmdLine, INT nCmdShow );
 INT CALLBACK HashSaveSilent_RunDLLW( HWND hWnd, HINSTANCE hInstance, PWSTR pszCmdLine, INT nCmdShow );
 INT CALLBACK HashSaveSilentNoQueue_RunDLLW( HWND hWnd, HINSTANCE hInstance, PWSTR pszCmdLine, INT nCmdShow );
 

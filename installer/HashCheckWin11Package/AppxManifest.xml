@@ -44,11 +44,13 @@
             <desktop5:ItemType Type="*">
               <desktop5:Verb Id="HashCheckVerify" Clsid="D07A4F30-D6F6-4E0B-9361-E3039EDB15FF" />
               <desktop5:Verb Id="HashCheckCreate" Clsid="DB56D393-FC0E-4F46-9C82-EC601E6AB6AA" />
+              <desktop5:Verb Id="HashCheckCreateSeparate" Clsid="2263623B-7700-4FAC-AE98-32BAA9FBC82D" />
               <desktop5:Verb Id="HashCheckOptions" Clsid="F92DBF1D-6398-405C-BCB5-1387088A9E7F" />
             </desktop5:ItemType>
             <desktop5:ItemType Type="Directory">
               <desktop5:Verb Id="HashCheckVerifyDirectory" Clsid="D07A4F30-D6F6-4E0B-9361-E3039EDB15FF" />
               <desktop5:Verb Id="HashCheckCreateDirectory" Clsid="DB56D393-FC0E-4F46-9C82-EC601E6AB6AA" />
+              <desktop5:Verb Id="HashCheckCreateSeparateDirectory" Clsid="2263623B-7700-4FAC-AE98-32BAA9FBC82D" />
               <desktop5:Verb Id="HashCheckOptionsDirectory" Clsid="F92DBF1D-6398-405C-BCB5-1387088A9E7F" />
             </desktop5:ItemType>
           </desktop4:FileExplorerContextMenus>
@@ -57,6 +59,7 @@
           <com:ComServer>
             <com:SurrogateServer DisplayName="HashCheck Shell Extension">
               <com:Class Id="DB56D393-FC0E-4F46-9C82-EC601E6AB6AA" Path="HashCheck.dll" ThreadingModel="STA" />
+              <com:Class Id="2263623B-7700-4FAC-AE98-32BAA9FBC82D" Path="HashCheck.dll" ThreadingModel="STA" />
               <com:Class Id="D07A4F30-D6F6-4E0B-9361-E3039EDB15FF" Path="HashCheck.dll" ThreadingModel="STA" />
               <com:Class Id="F92DBF1D-6398-405C-BCB5-1387088A9E7F" Path="HashCheck.dll" ThreadingModel="STA" />
             </com:SurrogateServer>

@@ -17,6 +17,7 @@
 #include <Strsafe.h>
 
 static const TCHAR SAVE_DEFAULT_NAME[] = TEXT("checksums");
+#define SEP_DLG_INCLUDE_CHECKSUM_FILES 0x0100
 
 // Due to the stupidity of the x64 compiler, the code emitted for the non-inline
 // function is not as efficient as it is on x86
@@ -36,8 +37,13 @@ VOID WINAPI HashCalcWalkDirectory( PHASHCALCCONTEXT phcctx, PTSTR pszPath, UINT 
 __forceinline BOOL WINAPI IsSpecialDirectoryName( PCTSTR pszPath );
 __forceinline BOOL WINAPI IsDoubleSlashPath( PCTSTR pszPath );
 __forceinline UINT WINAPI HashCalcGetSharedStem( PHASHCALCCONTEXT phcctx, PCTSTR *ppszStem );
+__forceinline BOOL WINAPI HasChecksumFileExtension( PCTSTR pszPath );
+BOOL WINAPI HashCalcBuildSeparateOutputPath( PHASHCALCCONTEXT phcctx, PCTSTR pszPath,
+                                             PTSTR pszOutputPath, UINT cchOutputPath );
+BOOL WINAPI HashCalcShouldSkipSeparateInput( PHASHCALCCONTEXT phcctx, PCTSTR pszPath );
 
 // Save helpers
+INT_PTR CALLBACK HashCalcSeparateDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
 __forceinline VOID WINAPI HashCalcSetSavePrefix( PHASHCALCCONTEXT phcctx, PTSTR pszSave );
 __forceinline PCTSTR WINAPI HashCalcLineEnding( PHASHCALCCONTEXT phcctx );
 
@@ -46,6 +52,56 @@ __forceinline PCTSTR WINAPI HashCalcLineEnding( PHASHCALCCONTEXT phcctx );
 /*============================================================================*\
 	Path processing
 \*============================================================================*/
+
+BOOL WINAPI HasChecksumFileExtension( PCTSTR pszPath )
+{
+	PCTSTR pszExt = StrRChr(pszPath, NULL, TEXT('.'));
+	if (!pszExt)
+		return(FALSE);
+
+	for (UINT i = 0; i < countof(g_szHashExtsTab); ++i)
+	{
+		if (StrCmpI(pszExt, g_szHashExtsTab[i]) == 0)
+			return(TRUE);
+	}
+
+	return(FALSE);
+}
+
+BOOL WINAPI HashCalcBuildSeparateOutputPath( PHASHCALCCONTEXT phcctx, PCTSTR pszPath,
+                                             PTSTR pszOutputPath, UINT cchOutputPath )
+{
+	if (!phcctx || !pszPath || !pszOutputPath ||
+	    phcctx->ofn.nFilterIndex < 1 ||
+	    phcctx->ofn.nFilterIndex > NUM_HASHES)
+	{
+		return(FALSE);
+	}
+
+	return(SUCCEEDED(StringCchCopy(pszOutputPath, cchOutputPath, pszPath)) &&
+	       SUCCEEDED(StringCchCat(pszOutputPath, cchOutputPath, g_szHashExtsTab[phcctx->ofn.nFilterIndex - 1])));
+}
+
+BOOL WINAPI HashCalcShouldSkipSeparateInput( PHASHCALCCONTEXT phcctx, PCTSTR pszPath )
+{
+	if (!phcctx->bSeparateFiles)
+		return(FALSE);
+
+	if (!phcctx->bIncludeChecksumFiles && HasChecksumFileExtension(pszPath))
+		return(TRUE);
+
+	if (phcctx->wIfExists == IFEXISTS_KEEP)
+	{
+		TCHAR szOutputPath[MAX_PATH_BUFFER + 16];
+		if (HashCalcBuildSeparateOutputPath(phcctx, pszPath, szOutputPath, countof(szOutputPath)) &&
+		    GetFileAttributes(szOutputPath) != INVALID_FILE_ATTRIBUTES)
+		{
+			return(TRUE);
+		}
+	}
+
+	return(FALSE);
+}
 
 BOOL WINAPI HashCalcPrepare( PHASHCALCCONTEXT phcctx )
 {
@@ -128,6 +184,11 @@ BOOL WINAPI HashCalcPrepare( PHASHCALCCONTEXT phcctx )
 			}
 			else
 			{
+				if (HashCalcShouldSkipSeparateInput(phcctx, pszCurrent))
+				{
+					continue;
+				}
+
 				PHASHCALCITEM pItem = SLAddItem(phcctx->hList, NULL, sizeof(HASHCALCITEM) + cbCurrent);
 
 				if (pItem)
@@ -191,6 +252,11 @@ VOID WINAPI HashCalcWalkDirectory( PHASHCALCCONTEXT phcctx, PTSTR pszPath, UINT 
 			}
 			else
 			{
+				if (HashCalcShouldSkipSeparateInput(phcctx, pszPath))
+				{
+					continue;
+				}
+
 				// File: Add to the list
 				UINT cbPathBuffer = (cchNew + 1) * sizeof(TCHAR);
 				PHASHCALCITEM pItem = SLAddItem(phcctx->hList, NULL, sizeof(HASHCALCITEM) + cbPathBuffer);
@@ -482,6 +548,150 @@ BOOL WINAPI HashCalcInitSaveToFile( PHASHCALCCONTEXT phcctx, PTSTR pszSaveFile,
 	return(TRUE);
 }
 
+INT_PTR CALLBACK HashCalcSeparateDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
+{
+	switch (uMsg)
+	{
+		case WM_INITDIALOG:
+		{
+			TCHAR szTitle[MAX_STRINGMSG];
+			if (LoadString(g_hModThisDll, IDS_HS_MENUTEXT_SEP, szTitle, countof(szTitle)))
+			{
+				PTSTR pszSrc = szTitle;
+				PTSTR pszDest = szTitle;
+
+				while (*pszSrc && *pszSrc != TEXT('(') && *pszSrc != TEXT('.'))
+				{
+					if (*pszSrc != TEXT('&'))
+						*pszDest++ = *pszSrc;
+					++pszSrc;
+				}
+				*pszDest = 0;
+				SetWindowText(hWnd, szTitle);
+			}
+
+			SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM)LoadIcon(g_hModThisDll, MAKEINTRESOURCE(IDI_FILETYPE)));
+
+			SetControlText(hWnd, IDC_SEP_CHK, IDS_HS_SEP_CHK);
+			SetControlText(hWnd, IDC_SEP_EX, IDS_HS_SEP_EX);
+			SetControlText(hWnd, IDC_SEP_EX_KEEP, IDS_HS_SEP_EX_KEEP);
+			SetControlText(hWnd, IDC_SEP_EX_OVERWRITE, IDS_HS_SEP_EX_OVERWRITE);
+			SetControlText(hWnd, IDC_SEP_INCLUDE_CHECKSUMS, IDS_HS_SEP_INCLUDE_CHECKSUMS);
+			SetControlText(hWnd, IDC_OK, IDS_HC_OK);
+			SetControlText(hWnd, IDC_CANCEL, IDS_HC_CANCEL);
+
+			if (lParam < 1 || lParam > NUM_HASHES)
+				lParam = DEFAULT_HASH_ALGORITHM;
+
+			SendDlgItemMessage(hWnd, IDC_SEP_CHK_FIRSTID + (int)lParam - 1, BM_SETCHECK, BST_CHECKED, 0);
+			SendDlgItemMessage(hWnd, IDC_SEP_EX_KEEP, BM_SETCHECK, BST_CHECKED, 0);
+			return(TRUE);
+		}
+
+		case WM_ENDSESSION:
+		{
+			if (wParam == FALSE)
+				break;
+		}
+		case WM_CLOSE:
+		{
+			EndDialog(hWnd, 0);
+			return(TRUE);
+		}
+
+		case WM_COMMAND:
+		{
+			switch (LOWORD(wParam))
+			{
+				case IDC_OK:
+				{
+					WORD wHashSelected = 0;
+					WORD wExistsSelected = IFEXISTS_KEEP;
+					WORD wDialogFlags;
+
+					for (WORD i = 0; i < NUM_HASHES; ++i)
+					{
+						if (SendDlgItemMessage(hWnd, IDC_SEP_CHK_FIRSTID + i, BM_GETCHECK, 0, 0) == BST_CHECKED)
+						{
+							wHashSelected = i + 1;
+							break;
+						}
+					}
+
+					if (!wHashSelected)
+						wHashSelected = DEFAULT_HASH_ALGORITHM;
+
+					for (WORD i = 0; i < IDC_SEP_EX_COUNT; ++i)
+					{
+						if (SendDlgItemMessage(hWnd, IDC_SEP_EX_FIRSTID + i, BM_GETCHECK, 0, 0) == BST_CHECKED)
+						{
+							wExistsSelected = i;
+							break;
+						}
+					}
+
+					wDialogFlags = wExistsSelected;
+					if (SendDlgItemMessage(hWnd, IDC_SEP_INCLUDE_CHECKSUMS, BM_GETCHECK, 0, 0) == BST_CHECKED)
+						wDialogFlags |= SEP_DLG_INCLUDE_CHECKSUM_FILES;
+
+					EndDialog(hWnd, MAKELONG(wHashSelected, wDialogFlags));
+					return(TRUE);
+				}
+
+				case IDC_CANCEL:
+				{
+					EndDialog(hWnd, 0);
+					return(TRUE);
+				}
+			}
+			break;
+		}
+	}
+
+	return(FALSE);
+}
+
+VOID WINAPI HashCalcInitSaveSeparate( PHASHCALCCONTEXT phcctx )
+{
+	phcctx->ofn.nFilterIndex = 0;
+	phcctx->wIfExists = IFEXISTS_KEEP;
+	phcctx->bIncludeChecksumFiles = FALSE;
+
+	phcctx->opt.dwFlags = HCOF_FILTERINDEX | HCOF_SAVEENCODING | HCOF_SAVEEOL;
+	OptionsLoad(&phcctx->opt);
+
+	DWORD dwOrigFilterIndex = phcctx->opt.dwFilterIndex;
+	INT_PTR nDialogRet = DialogBoxParam(
+		g_hModThisDll,
+		MAKEINTRESOURCE(IDD_HASHSAVE_SEP),
+		phcctx->hWnd,
+		HashCalcSeparateDlgProc,
+		(LPARAM)dwOrigFilterIndex
+	);
+
+	if (nDialogRet <= 0)
+		return;
+
+	phcctx->ofn.nFilterIndex = LOWORD(nDialogRet);
+	{
+		WORD wDialogFlags = HIWORD(nDialogRet);
+		phcctx->wIfExists = wDialogFlags & 0xFF;
+		if (phcctx->wIfExists > IFEXISTS_OVERWRITE)
+			phcctx->wIfExists = IFEXISTS_KEEP;
+		phcctx->bIncludeChecksumFiles = (wDialogFlags & SEP_DLG_INCLUDE_CHECKSUM_FILES) != 0;
+	}
+
+	if (phcctx->ofn.nFilterIndex &&
+	    phcctx->ofn.nFilterIndex != dwOrigFilterIndex)
+	{
+		phcctx->opt.dwFilterIndex = phcctx->ofn.nFilterIndex;
+		phcctx->opt.dwFlags = HCOF_FILTERINDEX;
+		OptionsSave(&phcctx->opt);
+	}
+
+	phcctx->szFormat[0] = 0;
+}
+
 PCTSTR WINAPI HashCalcLineEnding( PHASHCALCCONTEXT phcctx )
 {
 	return(phcctx->opt.dwSaveEol == 1 ? TEXT("\n") : TEXT("\r\n"));
@@ -496,13 +706,25 @@ VOID WINAPI HashCalcSetSaveFormat( PHASHCALCCONTEXT phcctx )
 		// The reason we tracked cchMax was because of this idiotic format
 		if (phcctx->ofn.nFilterIndex == 1)
 		{
-			StringCchPrintf(
-				phcctx->szFormat,
-				countof(phcctx->szFormat),
-				TEXT("%%-%ds %%s%s"),
-				phcctx->cchMax - phcctx->cchAdjusted,
-				HashCalcLineEnding(phcctx)
-			);
+			if (phcctx->bSeparateFiles)
+			{
+				StringCchPrintf(
+					phcctx->szFormat,
+					countof(phcctx->szFormat),
+					TEXT("%%s %%s%s"),
+					HashCalcLineEnding(phcctx)
+				);
+			}
+			else
+			{
+				StringCchPrintf(
+					phcctx->szFormat,
+					countof(phcctx->szFormat),
+					TEXT("%%-%ds %%s%s"),
+					phcctx->cchMax - phcctx->cchAdjusted,
+					HashCalcLineEnding(phcctx)
+				);
+			}
 		}
 		else if (phcctx->ofn.nFilterIndex == XXH3_64)
 		{
@@ -527,6 +749,13 @@ VOID WINAPI HashCalcSetSaveFormat( PHASHCALCCONTEXT phcctx )
 
 BOOL WINAPI HashCalcWriteResult( PHASHCALCCONTEXT phcctx, PHASHCALCITEM pItem )
 {
+	BOOL bHashValid = TRUE;
+	return(HashCalcWriteResultToFile(phcctx, phcctx->hFileOut, pItem, &bHashValid) && bHashValid);
+}
+
+BOOL WINAPI HashCalcWriteResultToFile( PHASHCALCCONTEXT phcctx, HANDLE hFileOut,
+                                       PHASHCALCITEM pItem, PBOOL pbHashValid )
+{
 	PCTSTR pszHash;                     // will be pointed to the hash name
     WCHAR szWbuffer[MAX_PATH_BUFFER];   // wide-char buffer
     CHAR  szAbuffer[MAX_PATH_BUFFER];   // narrow-char buffer
@@ -539,7 +768,7 @@ BOOL WINAPI HashCalcWriteResult( PHASHCALCCONTEXT phcctx, PHASHCALCITEM pItem )
     size_t cchLine = MAX_PATH_BUFFER;   // starts off as count of remaining TCHARS in the buffer
     PVOID pvLine;                       // will be pointed to the buffer to write out
     size_t cbLine;                      // will be line length in bytes, EXCLUDING nul terminator
-    BOOL bRetval = TRUE;
+    BOOL bHashValid = TRUE;
 
 	// If the checksum to save isn't present in the results
     if (! ((1 << (phcctx->ofn.nFilterIndex - 1)) & pItem->results.dwFlags))
@@ -551,7 +780,7 @@ BOOL WINAPI HashCalcWriteResult( PHASHCALCCONTEXT phcctx, PHASHCALCITEM pItem )
 
         // We'll still output a hash, but it will be all 0's, that way Verify will indicate an mismatch
         HashCalcClearInvalid(&pItem->results, TEXT('0'));
-        bRetval = FALSE;
+        bHashValid = FALSE;
     }
 
 	// Translate the filter index to a hash
@@ -564,10 +793,29 @@ BOOL WINAPI HashCalcWriteResult( PHASHCALCCONTEXT phcctx, PHASHCALCITEM pItem )
 	}
 
 	// Format the line
+	PCTSTR pszPathAdjusted;
+	if (!phcctx->bSeparateFiles)
+	{
+		pszPathAdjusted = pItem->szPath + phcctx->cchAdjusted;
+	}
+	else
+	{
+		pszPathAdjusted = pItem->szPath + pItem->cchPath;
+		while (pszPathAdjusted > pItem->szPath)
+		{
+			--pszPathAdjusted;
+			if (*pszPathAdjusted == TEXT('\\') || *pszPathAdjusted == TEXT('/'))
+			{
+				++pszPathAdjusted;
+				break;
+			}
+		}
+	}
+
 	#define HashCalcFormat(a, b) StringCchPrintfEx(szTbufferAppend, cchLine, &szTbufferAppend, &cchLine, 0, phcctx->szFormat, a, b)
 	(phcctx->ofn.nFilterIndex == 1) ?
-		HashCalcFormat(pItem->szPath + phcctx->cchAdjusted, pszHash) : // SFV
-		HashCalcFormat(pszHash, pItem->szPath + phcctx->cchAdjusted);  // everything else
+		HashCalcFormat(pszPathAdjusted, pszHash) : // SFV
+		HashCalcFormat(pszHash, pszPathAdjusted);  // everything else
 	#undef HashCalcFormat
 
 #ifdef _TIMED
@@ -625,15 +873,18 @@ BOOL WINAPI HashCalcWriteResult( PHASHCALCCONTEXT phcctx, PHASHCALCITEM pItem )
 
 		if (cbLine > 0)
 		{
-			INT cbWritten;
-			WriteFile(phcctx->hFileOut, pvLine, (DWORD)cbLine, &cbWritten, NULL);
+			DWORD cbWritten = 0;
+			WriteFile(hFileOut, pvLine, (DWORD)cbLine, &cbWritten, NULL);
 			if (cbLine != cbWritten) return(FALSE);
 		}
 		else return(FALSE);
 	}
 	else return(FALSE);
 
-	return(bRetval);
+	if (pbHashValid)
+		*pbHashValid = bHashValid;
+
+	return(TRUE);
 }
 
 VOID WINAPI HashCalcClearInvalid( PWHRESULTEX pwhres, WCHAR cInvalid )

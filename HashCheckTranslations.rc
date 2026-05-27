@@ -1352,3 +1352,14 @@ STRINGTABLE LANGUAGE LANG_CATALAN, SUBLANG_CATALAN_CATALAN
 	IDS_OPT_FONT             "Tipus de lletra"
 	IDS_OPT_FONT_CHANGE      "&Canvia..."
 }
+
+// English fallback strings for features added after the localized tables above.
+STRINGTABLE LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
+{
+	IDS_HS_MENUTEXT_SEP          "Create Separate Checksum Files..."
+	IDS_HS_SEP_CHK              "Checksum type"
+	IDS_HS_SEP_EX               "If checksum file already exists"
+	IDS_HS_SEP_EX_KEEP          "Keep existing file"
+	IDS_HS_SEP_EX_OVERWRITE     "Overwrite existing file"
+	IDS_HS_SEP_INCLUDE_CHECKSUMS "Include checksum files as input files"
+}
