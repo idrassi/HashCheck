@@ -18,7 +18,7 @@ ShowInstDetails show
 RequestExecutionLevel admin
 ManifestSupportedOS all
 
-!define MUI_ICON ..\HashCheck.ico
+!define MUI_ICON ..\HashCheckInstaller.ico
 !define MUI_ABORTWARNING
 
 ; Some stripped NSIS layouts omit Contrib\UIs\modern.exe. Prefer the normal
