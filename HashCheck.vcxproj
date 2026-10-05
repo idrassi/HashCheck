@@ -257,6 +257,7 @@
     <ClCompile Include="libs\WinHash.cpp" />
     <ClCompile Include="libs\Wow64.c" />
     <ClCompile Include="RegHelpers.c" />
+    <ClCompile Include="HashCheckInstall.c" />
     <ClCompile Include="SetAppID.c" />
     <ClCompile Include="IsSSD.c" />
     <ClCompile Include="UnicodeHelpers.c" />
@@ -308,6 +309,7 @@
     <ClInclude Include="libs\WinIntrinsics.h" />
     <ClInclude Include="libs\Wow64.h" />
     <ClInclude Include="RegHelpers.h" />
+    <ClInclude Include="HashCheckInstall.h" />
     <ClInclude Include="SetAppID.h" />
     <ClInclude Include="UnicodeHelpers.h" />
     <ClInclude Include="version.h" />

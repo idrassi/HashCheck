@@ -73,6 +73,9 @@ Mounir IDRASSI
 
 Microsoft Visual Studio 2019 (the free Community edition works well).
 
+See [WinGet packaging](installer/winget/README.md) for uninstall identity details
+and instructions for running the isolated registry tests.
+
 #### Localizations ####
 
 Translation strings are stored as string table resources. These tables can be modified by editing [HashCheckTranslations.rc](HashCheckTranslations.rc).

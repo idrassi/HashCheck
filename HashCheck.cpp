@@ -14,6 +14,7 @@
 #include "CHashCheckExplorerCommand.hpp"
 #include "CHashCheckClassFactory.hpp"
 #include "RegHelpers.h"
+#include "HashCheckInstall.h"
 #include "libs/WinHash.h"
 #include "libs/Wow64.h"
 #include <Strsafe.h>
@@ -402,34 +403,8 @@ HRESULT Install( BOOL bRegisterUninstaller, BOOL bCopyFile, BOOL bShowRebootProm
                 }
             }
 
-			// Uninstaller entries
-			RegDelete(HKEY_LOCAL_MACHINE, TEXT("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\%s"), CLSNAME_STR_HashCheck);
-
-			if (bRegisterUninstaller && (hKey = RegOpen(HKEY_LOCAL_MACHINE, TEXT("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\%s"), CLSNAME_STR_HashCheck, TRUE)))
-			{
-				TCHAR szUninstall[MAX_PATH << 1];
-				TCHAR szQuietUninstall[MAX_PATH << 1];
-				StringCchPrintf(szUninstall, countof(szUninstall), TEXT("regsvr32.exe /u /i /n /s \"%s\""), lpszTargetPath);
-				StringCchPrintf(szQuietUninstall, countof(szQuietUninstall), TEXT("regsvr32.exe /u /i:\"NoRebootPrompt\" /n /s \"%s\""), lpszTargetPath);
-
-				static const TCHAR szURLFull[] = TEXT("https://github.com/idrassi/HashCheck/issues");
-				TCHAR szURLBase[countof(szURLFull)];
-				SSStaticCpy(szURLBase, szURLFull);
-				szURLBase[35] = 0; // strlen("https://github.com/idrassi/HashCheck")
-
-				RegSetSZ(hKey, TEXT("DisplayIcon"), lpszTargetPath);
-				RegSetSZ(hKey, TEXT("DisplayName"), TEXT(HASHCHECK_NAME_STR));
-				RegSetSZ(hKey, TEXT("DisplayVersion"), TEXT(HASHCHECK_VERSION_STR));
-				RegSetDW(hKey, TEXT("EstimatedSize"), 1073);
-				RegSetSZ(hKey, TEXT("HelpLink"), szURLFull);
-				RegSetDW(hKey, TEXT("NoModify"), 1);
-				RegSetDW(hKey, TEXT("NoRepair"), 1);
-				RegSetSZ(hKey, TEXT("UninstallString"), szUninstall);
-				RegSetSZ(hKey, TEXT("QuietUninstallString"), szQuietUninstall);
-				RegSetSZ(hKey, TEXT("URLInfoAbout"), szURLBase);
-				RegSetSZ(hKey, TEXT("URLUpdateInfo"), TEXT("https://github.com/idrassi/HashCheck/releases/latest"));
-				RegCloseKey(hKey);
-			}
+			if (!(bRegisterUninstaller ? RegisterUninstallEntry(lpszTargetPath) : UnregisterUninstallEntry()))
+				return(SELFREG_E_CLASS);
 
 			if (bShowRebootPrompt && bRebootRequired)
 				ShowRebootRequiredMessage(TRUE);
@@ -562,7 +537,7 @@ HRESULT Uninstall( BOOL bShowRebootPrompt )
 	}
 
 	// We don't need the uninstall strings any more...
-	RegDelete(HKEY_LOCAL_MACHINE, TEXT("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\%s"), CLSNAME_STR_HashCheck);
+	if (!UnregisterUninstallEntry()) hr = E_FAIL;
 
 	if (bShowRebootPrompt && bRebootRequired)
 		ShowRebootRequiredMessage(FALSE);

@@ -51,6 +51,9 @@
     <ClCompile Include="RegHelpers.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="HashCheckInstall.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="SetAppID.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -155,6 +158,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="RegHelpers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="HashCheckInstall.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="SetAppID.h">

@@ -22,6 +22,8 @@ build_script:
   # the release versions
   - msbuild HashCheck.sln /p:Configuration=Release;Platform=Win32 /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
   - msbuild HashCheck.sln /p:Configuration=Release;Platform=x64   /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
+  - msbuild UnitTests\UninstallRegistrationTests.vcxproj /p:Configuration=Release;Platform=Win32
+  - msbuild UnitTests\UninstallRegistrationTests.vcxproj /p:Configuration=Release;Platform=x64
 
 before_test:
   - cd "%APPVEYOR_BUILD_FOLDER%\UnitTests"
@@ -43,6 +45,8 @@ before_test:
 
 test_script:
   - cd "%APPVEYOR_BUILD_FOLDER%"
+  - UnitTests\bin\UninstallRegistration\Win32\UninstallRegistrationTests.exe
+  - UnitTests\bin\UninstallRegistration\x64\UninstallRegistrationTests.exe
   # the NO_PPL versions
   - regsvr32 /i:"NoCopy NoUninstall" /n /s Bin\Win32\Debug\HashCheck-no_ppl.dll
   - packages\xunit.runner.console.2.1.0\tools\xunit.console.x86 UnitTests\bin\Release\UnitTests.dll -appveyor

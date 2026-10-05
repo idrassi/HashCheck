@@ -51,6 +51,8 @@ static const GUID CLSID_HashCheckExplorerOptions = { 0xf92dbf1d, 0x6398, 0x405c,
 #define CLSID_STR_HashCheckExplorerVerify TEXT("{D07A4F30-D6F6-4E0B-9361-E3039EDB15FF}")
 #define CLSID_STR_HashCheckExplorerOptions TEXT("{F92DBF1D-6398-405C-BCB5-1387088A9E7F}")
 #define CLSNAME_STR_HashCheck       TEXT("HashCheck Shell Extension")
+#define UNINSTALL_KEY_STR_HashCheck TEXT("idrassi.HashCheckShellExtension")
+#define PUBLISHER_STR_HashCheck     TEXT("idrassi")
 #define PROGID_STR_HashCheck        TEXT("HashCheck")
 #define PACKAGE_NAME_STR_HashCheck  TEXT("IDRIX.HashCheck")
 #define PACKAGE_FILE_STR_HashCheck  TEXT("HashCheckWin11.msix")
