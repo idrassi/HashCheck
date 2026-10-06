@@ -12,7 +12,7 @@
   <Identity
     Name="IDRIX.HashCheck"
     Publisher="CN=IDRIX SARL, O=IDRIX SARL, STREET=5 AVENUE INGRES, L=Paris, S=Île-de-France, C=FR, OID.1.3.6.1.4.1.311.60.2.1.3=FR, SERIALNUMBER=490 000 619, OID.2.5.4.15=Private Organization"
-    Version="2.6.2.0"
+    Version="2.6.3.0"
     ProcessorArchitecture="neutral" />
   <Properties>
     <DisplayName>HashCheck</DisplayName>

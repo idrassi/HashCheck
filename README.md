@@ -6,6 +6,22 @@ The latest installer for Windows (Vista and later) can be found here:
 
 <https://github.com/idrassi/HashCheck/releases/latest>
 
+You can also install HashCheck with WinGet:
+
+```text
+winget install --id idrassi.HashCheckShellExtension --exact
+```
+
+### Verifying checksum files ###
+
+Open a checksum file in Explorer to verify the files it lists. The verification window can be resized or maximized and remembers its size and position. If your monitor setup changes, the window is kept within the available screen area.
+
+The summary highlights mismatches in red and unreadable files in yellow. The match counter turns green only when every listed file matches. High contrast mode keeps system colors.
+
+Use **Copy...** to copy all results or just the summary. To copy specific rows, select them and press **Ctrl+C**; **Ctrl+A** selects all rows. Results still being calculated appear as `PENDING` in copied text.
+
+If a checksum file can't be loaded, the error message includes the underlying cause. Verification stops if there isn't enough memory to load every entry. Large checksum files still require substantial memory because HashCheck loads them into memory before verification.
+
 ### Creating checksum files without Explorer ###
 
 The installer places `HashCheckPackageHost.exe` beside `HashCheck.dll`. It can
@@ -21,7 +37,7 @@ folders onto `HashCheckPackageHost.exe` opens the normal HashCheck save dialog.
 The same launcher also supports `/verify <checksum-file>` and `/options`.
 
 To create one checksum file next to each selected file, use `/separate`. This
-opens the same interactive hash-type dialog as Explorer:
+opens the same interactive hash type dialog as Explorer's **Create Separate Checksum Files...** command:
 
 ```text
 "%ProgramFiles%\HashCheck\HashCheckPackageHost.exe" /create /separate [/noqueue] "C:\path\to\file-or-folder" ["C:\another\path" ...]
