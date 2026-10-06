@@ -51,6 +51,12 @@ PWSTR __fastcall BufferToWStr( PBYTE *ppbData, DWORD cbData )
 	PBYTE pbData = *ppbData;
 	PWSTR pszResult;
 
+	if (cbData > MAXLONG - 1)
+	{
+		SetLastError(ERROR_FILE_TOO_LARGE);
+		return(NULL);
+	}
+
 	// Step 1: Find out if the buffer is a UTF-16 string
 
 	INT iUnicodeTests = IS_TEXT_UNICODE;
@@ -72,7 +78,7 @@ PWSTR __fastcall BufferToWStr( PBYTE *ppbData, DWORD cbData )
 	// Step 2: If this is not UTF-16, then check if this is UTF-8 or ANSI, and
 	// then convert as appropriate
 
-	if (pszResult = malloc((cbData + 1) * sizeof(WCHAR)))
+	if (pszResult = malloc(((SIZE_T)cbData + 1) * sizeof(WCHAR)))
 	{
 		PBYTE pbScratch;
 		UINT uCodePage;
@@ -97,9 +103,13 @@ PWSTR __fastcall BufferToWStr( PBYTE *ppbData, DWORD cbData )
 		}
 		else
 		{
+			DWORD dwError = GetLastError();
 			free(pszResult);
+			SetLastError(dwError ? dwError : ERROR_NO_UNICODE_TRANSLATION);
+			return(NULL);
 		}
 	}
 
+	SetLastError(ERROR_NOT_ENOUGH_MEMORY);
 	return(NULL);
 }

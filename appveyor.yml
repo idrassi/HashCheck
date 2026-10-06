@@ -24,6 +24,8 @@ build_script:
   - msbuild HashCheck.sln /p:Configuration=Release;Platform=x64   /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
   - msbuild UnitTests\UninstallRegistrationTests.vcxproj /p:Configuration=Release;Platform=Win32
   - msbuild UnitTests\UninstallRegistrationTests.vcxproj /p:Configuration=Release;Platform=x64
+  - msbuild UnitTests\VerificationTests.vcxproj /p:Configuration=Release;Platform=Win32
+  - msbuild UnitTests\VerificationTests.vcxproj /p:Configuration=Release;Platform=x64
 
 before_test:
   - cd "%APPVEYOR_BUILD_FOLDER%\UnitTests"
@@ -47,6 +49,8 @@ test_script:
   - cd "%APPVEYOR_BUILD_FOLDER%"
   - UnitTests\bin\UninstallRegistration\Win32\UninstallRegistrationTests.exe
   - UnitTests\bin\UninstallRegistration\x64\UninstallRegistrationTests.exe
+  - UnitTests\bin\Verification\Win32\VerificationTests.exe
+  - UnitTests\bin\Verification\x64\VerificationTests.exe
   - powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File UnitTests\PowerShellModulePath.ps1
   # the NO_PPL versions
   - regsvr32 /i:"NoCopy NoUninstall" /n /s Bin\Win32\Debug\HashCheck-no_ppl.dll

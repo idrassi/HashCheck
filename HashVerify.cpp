@@ -135,7 +135,8 @@ typedef struct {
 
 // Data parsing functions
 __forceinline PBYTE WINAPI HashVerifyLoadData( PHASHVERIFYCONTEXT phvctx );
-VOID WINAPI HashVerifyParseData( PHASHVERIFYCONTEXT phvctx );
+BOOL WINAPI HashVerifyParseData( PHASHVERIFYCONTEXT phvctx );
+static VOID WINAPI HashVerifyShowLoadError( PCTSTR pszPath, DWORD dwError );
 BOOL WINAPI ValidateHexSequence( PTSTR psz, UINT cch );
 
 // Worker thread
@@ -243,10 +244,22 @@ DWORD WINAPI HashVerifyThreadEx( PTSTR pszPath, BOOL bBypassQueue )
 	// Load the raw data
 	pbRawData = HashVerifyLoadData(&hvctx);
 
-	if (hvctx.pszFileData && (hvctx.hList = SLCreateEx(TRUE)))
+	BOOL bLoaded = FALSE;
+	DWORD dwLoadError = GetLastError();
+	if (hvctx.pszFileData)
 	{
-		HashVerifyParseData(&hvctx);
+		hvctx.hList = SLCreateEx(TRUE);
+		if (hvctx.hList)
+		{
+			bLoaded = HashVerifyParseData(&hvctx);
+			if (!bLoaded) dwLoadError = GetLastError();
+		}
+		else
+			dwLoadError = ERROR_NOT_ENOUGH_MEMORY;
+	}
 
+	if (bLoaded)
+	{
 		DialogBoxParam(
 			g_hModThisDll,
 			MAKEINTRESOURCE(IDD_HASHVERF),
@@ -254,21 +267,13 @@ DWORD WINAPI HashVerifyThreadEx( PTSTR pszPath, BOOL bBypassQueue )
 			HashVerifyDlgProc,
 			(LPARAM)&hvctx
 		);
-
-		SLRelease(hvctx.hList);
-	}
-	else if (*pszPath)
-	{
-		// Technically, we could reach this point by either having a file read
-		// error or a memory allocation error, but I really don't feel like
-		// doing separate messages for what are supposed to be rare edge cases.
-		TCHAR szFormat[MAX_STRINGRES], szMessage[0x100];
-		LoadString(g_hModThisDll, IDS_HV_LOADERROR_FMT, szFormat, countof(szFormat));
-		StringCchPrintf(szMessage, countof(szMessage), szFormat, pszPath);
-		MessageBox(NULL, szMessage, NULL, MB_OK | MB_ICONERROR);
 	}
 
+	// Release potentially large buffers before asking Windows to show an error.
+	if (hvctx.hList) SLRelease(hvctx.hList);
 	free(pbRawData);
+	if (!bLoaded && *pszPath)
+		HashVerifyShowLoadError(pszPath, dwLoadError);
 	free(pszPath);
 
 	// Clean up the manifest activation and release our host
@@ -287,40 +292,84 @@ DWORD WINAPI HashVerifyThreadEx( PTSTR pszPath, BOOL bBypassQueue )
 	Data parsing functions
 \*============================================================================*/
 
+static VOID WINAPI HashVerifyShowLoadError( PCTSTR pszPath, DWORD dwError )
+{
+	TCHAR szFormat[MAX_STRINGRES], szMessage[MAX_PATH_BUFFER + 0x200], szReason[0x200];
+	LoadString(g_hModThisDll, IDS_HV_LOADERROR_FMT, szFormat, countof(szFormat));
+	StringCchPrintf(szMessage, MAX_PATH_BUFFER, szFormat, pszPath);
+	if (dwError && FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL, dwError, 0, szReason, countof(szReason), NULL))
+	{
+		StringCchCat(szMessage, countof(szMessage), TEXT("\r\n\r\n"));
+		StringCchCat(szMessage, countof(szMessage), szReason);
+	}
+	MessageBox(NULL, szMessage, NULL, MB_OK | MB_ICONERROR);
+}
+
 PBYTE WINAPI HashVerifyLoadData( PHASHVERIFYCONTEXT phvctx )
 {
-	PBYTE pbRawData = NULL;
-	HANDLE hFile;
+	phvctx->pszFileData = NULL;
+	HANDLE hFile = OpenFileForReading(phvctx->pszPath);
+	if (hFile == INVALID_HANDLE_VALUE)
+		return(NULL);
 
-	if ((hFile = OpenFileForReading(phvctx->pszPath)) != INVALID_HANDLE_VALUE)
+	PBYTE pbRawData = NULL;
+	DWORD dwError = ERROR_SUCCESS;
+	do
 	{
 		LARGE_INTEGER cbRawData;
 		DWORD cbBytesRead;
-
-		if ( (GetFileSizeEx(hFile, &cbRawData)) &&
-		     (cbRawData.HighPart == 0) &&
-		     (cbRawData.LowPart <= MAXDWORD - sizeof(DWORD)) &&
-		     (pbRawData = (PBYTE)malloc(cbRawData.LowPart + sizeof(DWORD))) &&
-		     (ReadFile(hFile, pbRawData, cbRawData.LowPart, &cbBytesRead, NULL)) &&
-		     (cbRawData.LowPart == cbBytesRead) )
+		if (!GetFileSizeEx(hFile, &cbRawData))
 		{
-			// When we allocated a block of memory for the file data, we
-			// reserved a DWORD at the end for NULL termination and to serve as
-			// the extra buffer needed by IsTextUTF8...
-			*((UPDWORD)(pbRawData + cbRawData.LowPart)) = 0;
-
-			// Prepare the data for the parser...
-			phvctx->pszFileData = BufferToWStr(&pbRawData, cbRawData.LowPart);
-			HCNormalizeString(phvctx->pszFileData);
+			dwError = GetLastError();
+			break;
+		}
+		// The text conversion APIs use signed INT buffer lengths.
+		if (cbRawData.QuadPart < 0 || cbRawData.QuadPart > MAXLONG - 1)
+		{
+			dwError = ERROR_FILE_TOO_LARGE;
+			break;
+		}
+		pbRawData = (PBYTE)malloc((SIZE_T)cbRawData.LowPart + sizeof(DWORD));
+		if (!pbRawData)
+		{
+			dwError = ERROR_NOT_ENOUGH_MEMORY;
+			break;
+		}
+		if (!ReadFile(hFile, pbRawData, cbRawData.LowPart, &cbBytesRead, NULL))
+		{
+			dwError = GetLastError();
+			break;
+		}
+		if (cbRawData.LowPart != cbBytesRead)
+		{
+			dwError = ERROR_HANDLE_EOF;
+			break;
 		}
 
-		CloseHandle(hFile);
-	}
+		// Include the terminator and the extra bytes required by IsTextUTF8.
+		*((UPDWORD)(pbRawData + cbRawData.LowPart)) = 0;
+		phvctx->pszFileData = BufferToWStr(&pbRawData, cbRawData.LowPart);
+		if (!phvctx->pszFileData)
+		{
+			dwError = GetLastError();
+			break;
+		}
+		HCNormalizeString(phvctx->pszFileData);
+	} while (FALSE);
 
+	CloseHandle(hFile);
+	if (dwError != ERROR_SUCCESS)
+	{
+		free(pbRawData);
+		pbRawData = NULL;
+		SetLastError(dwError);
+	}
 	return(pbRawData);
 }
 
-VOID WINAPI HashVerifyParseData( PHASHVERIFYCONTEXT phvctx )
+
+BOOL WINAPI HashVerifyParseData( PHASHVERIFYCONTEXT phvctx )
 {
 	PTSTR pszData = phvctx->pszFileData;  // Points to the next line to process
 
@@ -496,11 +545,12 @@ VOID WINAPI HashVerifyParseData( PHASHVERIFYCONTEXT phvctx )
 			// By treating cchPath as INT16 and checking the sign, we ensure
 			// that the path does not exceed 32K.
 
-			// Create the new data block
-			PHASHVERIFYITEM pItem = (PHASHVERIFYITEM)SLAddItem(phvctx->hList, NULL, sizeof(HASHVERIFYITEM));
+			// SimpleList takes a UINT byte count for the index allocation.
+			if (phvctx->cTotal >= MAXDWORD / sizeof(PHVITEM))
+				goto out_of_memory;
 
-			// Abort if we are out of memory
-			if (!pItem) break;
+			PHASHVERIFYITEM pItem = (PHASHVERIFYITEM)SLAddItem(phvctx->hList, NULL, sizeof(HASHVERIFYITEM));
+			if (!pItem) goto out_of_memory;
 
 			pItem->filesize.ui64 = -1;
 			pItem->filesize.sz[0] = 0;
@@ -518,16 +568,21 @@ VOID WINAPI HashVerifyParseData( PHASHVERIFYCONTEXT phvctx )
 
 	} // Loop until there are no lines left
 
-	// Build the index
-	if ( phvctx->cTotal && (phvctx->index =
-	     (PPHVITEM)SLSetContextSize(phvctx->hList, phvctx->cTotal * sizeof(PHVITEM))) )
+	// An empty file is valid, but an incomplete list must never be verified.
+	if (phvctx->cTotal)
 	{
+		phvctx->index = (PPHVITEM)SLSetContextSize(phvctx->hList,
+			(UINT)(phvctx->cTotal * sizeof(PHVITEM)));
+		if (!phvctx->index) goto out_of_memory;
 		SLBuildIndex(phvctx->hList, (PVOID*)phvctx->index);
 	}
-	else
-	{
-		phvctx->cTotal = 0;
-	}
+	return(TRUE);
+
+out_of_memory:
+	phvctx->cTotal = 0;
+	phvctx->index = NULL;
+	SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+	return(FALSE);
 }
 
 BOOL WINAPI ValidateHexSequence( PTSTR psz, UINT cch )

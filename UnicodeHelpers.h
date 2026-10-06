@@ -62,7 +62,7 @@ PBYTE __fastcall IsTextUTF8( PBYTE pbData );
 /**
  * BufferToWStr - Converts a malloc-allocated buffer to Unicode and returns
  * a pointer to the start of the new Unicode string, with any BOMs skipped;
- * NULL is returned if the operation failed.
+ * NULL is returned if the operation failed; GetLastError describes the failure.
  *
  * NOTE: BufferToWStr may re-allocate a larger buffer, in which case the
  * original buffer is freed and *ppbData will be a pointer to the new buffer
