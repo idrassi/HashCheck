@@ -154,6 +154,7 @@ VOID WINAPI HashVerifyDlgInit( PHASHVERIFYCONTEXT phvctx );
 
 // Dialog status
 VOID WINAPI HashVerifyUpdateSummary( PHASHVERIFYCONTEXT phvctx, PHASHVERIFYITEM pItem );
+static HBRUSH WINAPI HashVerifySummaryColor( PHASHVERIFYCONTEXT phvctx, HDC hdc, UINT uControl );
 
 // List management
 __forceinline VOID WINAPI HashVerifyListInfo( PHASHVERIFYCONTEXT phvctx, LPNMLVDISPINFO pdi );
@@ -1126,6 +1127,25 @@ INT_PTR CALLBACK HashVerifyDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
 			break;
 		}
 
+		case WM_CTLCOLORSTATIC:
+		{
+			phvctx = (PHASHVERIFYCONTEXT)GetWindowLongPtr(hWnd, DWLP_USER);
+			if (phvctx)
+			{
+				HBRUSH hBrush = HashVerifySummaryColor(phvctx, (HDC)wParam, GetDlgCtrlID((HWND)lParam));
+				if (hBrush) return((INT_PTR)hBrush);
+			}
+			break;
+		}
+
+		case WM_SETTINGCHANGE:
+		case WM_SYSCOLORCHANGE:
+		case WM_THEMECHANGED:
+		{
+			RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+			break;
+		}
+
 		case WM_TIMER:
 		{
 			// Vista: Workaround to fix their buggy progress bar
@@ -1326,6 +1346,50 @@ VOID WINAPI HashVerifyDlgInit( PHASHVERIFYCONTEXT phvctx )
 	Dialog status
 \*============================================================================*/
 
+static HBRUSH WINAPI HashVerifySummaryColor( PHASHVERIFYCONTEXT phvctx, HDC hdc, UINT uControl )
+{
+	COLORREF colorText, colorBackground;
+	switch (uControl)
+	{
+		case IDC_MATCH_LABEL:
+		case IDC_MATCH_RESULTS:
+			if (!phvctx->cTotal || phvctx->cMatch != phvctx->cTotal ||
+				phvctx->cHandledMsgs != phvctx->cTotal)
+				return(NULL);
+			colorText = RGB(0x00, 0x00, 0x00);
+			colorBackground = RGB(0x00, 0xE0, 0x00);
+			break;
+
+		case IDC_MISMATCH_LABEL:
+		case IDC_MISMATCH_RESULTS:
+			if (!phvctx->cMismatch) return(NULL);
+			colorText = RGB(0xFF, 0xFF, 0xFF);
+			colorBackground = RGB(0xC0, 0x00, 0x00);
+			break;
+
+		case IDC_UNREADABLE_LABEL:
+		case IDC_UNREADABLE_RESULTS:
+			if (!phvctx->cUnreadable) return(NULL);
+			colorText = RGB(0x00, 0x00, 0x00);
+			colorBackground = RGB(0xFF, 0xE0, 0x00);
+			break;
+
+		default:
+			return(NULL);
+	}
+
+	HIGHCONTRAST contrast = { sizeof(contrast) };
+	if (!SystemParametersInfo(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0) ||
+		(contrast.dwFlags & HCF_HIGHCONTRASTON))
+		return(NULL);
+
+	SetTextColor(hdc, colorText);
+	SetBkColor(hdc, colorBackground);
+	SetBkMode(hdc, OPAQUE);
+	SetDCBrushColor(hdc, colorBackground);
+	return((HBRUSH)GetStockObject(DC_BRUSH));
+}
+
 VOID WINAPI HashVerifyUpdateSummary( PHASHVERIFYCONTEXT phvctx, PHASHVERIFYITEM pItem )
 {
 	HWND hWnd = phvctx->hWnd;
@@ -1371,18 +1435,21 @@ VOID WINAPI HashVerifyUpdateSummary( PHASHVERIFYCONTEXT phvctx, PHASHVERIFYITEM 
 		{
 			FormatFractionalResults(szFormat, szBuffer, phvctx->cMatch, phvctx->cTotal);
 			SetDlgItemText(hWnd, IDC_MATCH_RESULTS, szBuffer);
+			InvalidateRect(GetDlgItem(hWnd, IDC_MATCH_LABEL), NULL, TRUE);
 		}
 
 		if (!pItem || phvctx->prev.cMismatch != phvctx->cMismatch)
 		{
 			FormatFractionalResults(szFormat, szBuffer, phvctx->cMismatch, phvctx->cTotal);
 			SetDlgItemText(hWnd, IDC_MISMATCH_RESULTS, szBuffer);
+			InvalidateRect(GetDlgItem(hWnd, IDC_MISMATCH_LABEL), NULL, TRUE);
 		}
 
 		if (!pItem || phvctx->prev.cUnreadable != phvctx->cUnreadable)
 		{
 			FormatFractionalResults(szFormat, szBuffer, phvctx->cUnreadable, phvctx->cTotal);
 			SetDlgItemText(hWnd, IDC_UNREADABLE_RESULTS, szBuffer);
+			InvalidateRect(GetDlgItem(hWnd, IDC_UNREADABLE_LABEL), NULL, TRUE);
 		}
 
 		FormatFractionalResults(szFormat, szBuffer, phvctx->cTotal - phvctx->cHandledMsgs, phvctx->cTotal);
