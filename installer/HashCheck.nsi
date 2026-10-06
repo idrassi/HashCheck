@@ -171,6 +171,8 @@ Function register_sparse_package
     FileOpen $LogHandle "$1" w
     IfErrors register_sparse_prepare_failed
     FileWrite $LogHandle "param([string]$$PackagePath, [string]$$ExternalLocation, [string]$$PackageName, [string]$$LogPath)$\r$\n"
+    ; An installer launched from pwsh inherits module paths that Windows PowerShell cannot use.
+    FileWrite $LogHandle "$$env:PSModulePath = $$PSHOME + '\Modules'$\r$\n"
     FileWrite $LogHandle "$$ErrorActionPreference = 'Stop'$\r$\n"
     FileWrite $LogHandle "function Log([string]$$Message) { Add-Content -LiteralPath $$LogPath -Encoding UTF8 -Value $$Message }$\r$\n"
     FileWrite $LogHandle "try {$\r$\n"

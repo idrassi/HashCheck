@@ -47,6 +47,7 @@ test_script:
   - cd "%APPVEYOR_BUILD_FOLDER%"
   - UnitTests\bin\UninstallRegistration\Win32\UninstallRegistrationTests.exe
   - UnitTests\bin\UninstallRegistration\x64\UninstallRegistrationTests.exe
+  - powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File UnitTests\PowerShellModulePath.ps1
   # the NO_PPL versions
   - regsvr32 /i:"NoCopy NoUninstall" /n /s Bin\Win32\Debug\HashCheck-no_ppl.dll
   - packages\xunit.runner.console.2.1.0\tools\xunit.console.x86 UnitTests\bin\Release\UnitTests.dll -appveyor

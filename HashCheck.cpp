@@ -570,7 +570,9 @@ VOID WINAPI UnregisterSparsePackage( )
 	if (FAILED(StringCchCat(szPowerShell, countof(szPowerShell), TEXT("\\WindowsPowerShell\\v1.0\\powershell.exe"))))
 		return;
 
+	// Use the Windows PowerShell modules even when our parent was launched from pwsh.
 	static const TCHAR szScript[] =
+		TEXT("$env:PSModulePath = $PSHOME + '\\Modules'; ")
 		TEXT("if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) { ")
 		TEXT("$name = '") PACKAGE_NAME_STR_HashCheck TEXT("'; ")
 		TEXT("$packages = Get-AppxPackage -AllUsers -Name $name -ErrorAction SilentlyContinue; ")
