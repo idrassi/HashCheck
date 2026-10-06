@@ -17,9 +17,17 @@
 #include <Strsafe.h>
 #include <cassert>
 #include <algorithm>
+#include <string>
+#include <new>
+#include <stdexcept>
+#include <windowsx.h>
 #ifdef USE_PPL
 #include <ppl.h>
 #include <concurrent_vector.h>
+#endif
+
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
 #endif
 
 #define HV_COL_FILENAME 0
@@ -61,6 +69,41 @@
 #define SSChainNCpy2 SSChainNCpy2F
 #endif
 
+enum { HV_MOVE_X = 1, HV_MOVE_Y = 2, HV_SIZE_X = 4, HV_SIZE_Y = 8 };
+static const struct { UINT id; UINT flags; } HashVerifyAnchors[] =
+{
+	{ IDC_LIST, HV_SIZE_X | HV_SIZE_Y },
+	{ IDC_SUMMARY, HV_MOVE_Y | HV_SIZE_X },
+	{ IDC_MATCH_LABEL, HV_MOVE_Y }, { IDC_MATCH_RESULTS, HV_MOVE_Y },
+	{ IDC_MISMATCH_LABEL, HV_MOVE_Y }, { IDC_MISMATCH_RESULTS, HV_MOVE_Y },
+	{ IDC_UNREADABLE_LABEL, HV_MOVE_X | HV_MOVE_Y },
+	{ IDC_UNREADABLE_RESULTS, HV_MOVE_X | HV_MOVE_Y },
+	{ IDC_PENDING_LABEL, HV_MOVE_X | HV_MOVE_Y },
+	{ IDC_PENDING_RESULTS, HV_MOVE_X | HV_MOVE_Y },
+	{ IDC_HV_COPY, HV_MOVE_Y },
+	{ IDC_PROG_TOTAL, HV_MOVE_Y | HV_SIZE_X },
+	{ IDC_PROG_FILE, HV_MOVE_Y | HV_SIZE_X },
+	{ IDC_PAUSE, HV_MOVE_X | HV_MOVE_Y },
+	{ IDC_STOP, HV_MOVE_X | HV_MOVE_Y },
+	{ IDC_EXIT, HV_MOVE_X | HV_MOVE_Y }
+};
+
+typedef struct {
+	SIZE client, minimum;
+	RECT controls[countof(HashVerifyAnchors)];
+	UINT initialDpi, dpi;
+	LOGFONT font;
+	HFONT scaledFont;
+	BOOL ready;
+} HASHVERIFYLAYOUT;
+
+typedef struct {
+	DWORD version;
+	RECT normal; // Screen coordinates, including when the window is minimized.
+	UINT dpi;
+	BOOL maximized;
+} HASHVERIFYPLACEMENT;
+
 typedef struct {
 	UINT               cMatch;       // number of matches
 	UINT               cMismatch;    // number of mismatches
@@ -79,6 +122,7 @@ typedef struct {
 	INT16              cchDisplayName;
 	INT                nListviewIndex;
 	BOOL               bBeenSeen;    // has the listview control asked for this item's info yet?
+	BOOL               bResultReported; // set by the UI after handling the result
 	UINT8              uState;
 	UINT8              uStatusID;
 	TCHAR              szActual[MAX_DIGEST_STRING_LENGTH];
@@ -118,6 +162,7 @@ typedef struct {
 	UINT               uMaxBatch;    // maximum number of updates to coalesce
     volatile DWORD     whctxFlags;   // WinHash library dwFlags (which checksums to use)
 	TCHAR              szStatus[4][MAX_STRINGRES];
+	HASHVERIFYLAYOUT   layout;
 } HASHVERIFYCONTEXT, *PHASHVERIFYCONTEXT;
 
 typedef struct {
@@ -559,6 +604,7 @@ BOOL WINAPI HashVerifyParseData( PHASHVERIFYCONTEXT phvctx )
 			pItem->cchDisplayName = cchPath;
 			pItem->nListviewIndex = phvctx->cTotal;
 			pItem->bBeenSeen = FALSE;
+			pItem->bResultReported = FALSE;
 			pItem->uStatusID = HV_STATUS_NULL;
 			pItem->szActual[0] = 0;
 
@@ -1052,6 +1098,331 @@ VOID __fastcall HashVerifyWorkerMain( PHASHVERIFYCONTEXT phvctx )
 	Dialog general
 \*============================================================================*/
 
+static UINT WINAPI HashVerifyWindowDpi(HWND hWnd)
+{
+	typedef UINT (WINAPI *GETDPI)(HWND);
+	static GETDPI getDpi = (GETDPI)GetProcAddress(GetModuleHandle(TEXT("user32.dll")), "GetDpiForWindow");
+	if (getDpi)
+	{
+		UINT dpi = getDpi(hWnd);
+		if (dpi) return dpi;
+	}
+	HDC dc = GetDC(hWnd);
+	UINT dpi = dc ? GetDeviceCaps(dc, LOGPIXELSY) : 96;
+	if (dc) ReleaseDC(hWnd, dc);
+	return dpi ? dpi : 96;
+}
+
+static BOOL WINAPI HashVerifyScalesForDpi(HWND hWnd)
+{
+	typedef HANDLE (WINAPI *GETCONTEXT)(HWND);
+	typedef int (WINAPI *GETAWARENESS)(HANDLE);
+	static GETCONTEXT getContext = (GETCONTEXT)GetProcAddress(
+		GetModuleHandle(TEXT("user32.dll")), "GetWindowDpiAwarenessContext");
+	static GETAWARENESS getAwareness = (GETAWARENESS)GetProcAddress(
+		GetModuleHandle(TEXT("user32.dll")), "GetAwarenessFromDpiAwarenessContext");
+	// Windows handles bitmap scaling for hosts that aren't aware of each monitor's DPI.
+	return !getContext || !getAwareness || getAwareness(getContext(hWnd)) == 2;
+}
+
+static SIZE WINAPI HashVerifyMinimumSize(PHASHVERIFYCONTEXT ctx)
+{
+	SIZE size = {
+		MulDiv(ctx->layout.minimum.cx, ctx->layout.dpi, ctx->layout.initialDpi),
+		MulDiv(ctx->layout.minimum.cy, ctx->layout.dpi, ctx->layout.initialDpi)
+	};
+	return size;
+}
+
+static VOID WINAPI HashVerifyLayoutInit(PHASHVERIFYCONTEXT ctx)
+{
+	HASHVERIFYLAYOUT *layout = &ctx->layout;
+	RECT client, window;
+	GetClientRect(ctx->hWnd, &client);
+	GetWindowRect(ctx->hWnd, &window);
+	layout->client.cx = client.right;
+	layout->client.cy = client.bottom;
+	layout->minimum.cx = window.right - window.left;
+	layout->minimum.cy = window.bottom - window.top;
+	layout->initialDpi = layout->dpi = HashVerifyWindowDpi(ctx->hWnd);
+	GetObject((HFONT)SendMessage(ctx->hWnd, WM_GETFONT, 0, 0), sizeof(LOGFONT), &layout->font);
+	for (UINT i = 0; i < countof(HashVerifyAnchors); ++i)
+	{
+		GetWindowRect(GetDlgItem(ctx->hWnd, HashVerifyAnchors[i].id), &layout->controls[i]);
+		MapWindowPoints(NULL, ctx->hWnd, (POINT*)&layout->controls[i], 2);
+	}
+	// This dialog handles font scaling and anchoring itself on a DPI change.
+	// Load the newer API dynamically so older Windows versions still work.
+	typedef BOOL (WINAPI *SETDPIBEHAVIOR)(HWND, DWORD, DWORD);
+	SETDPIBEHAVIOR setBehavior = (SETDPIBEHAVIOR)GetProcAddress(
+		GetModuleHandle(TEXT("user32.dll")), "SetDialogDpiChangeBehavior");
+	if (setBehavior) setBehavior(ctx->hWnd, 1, 1); // DDC_DISABLE_ALL
+	layout->ready = TRUE;
+}
+
+static VOID WINAPI HashVerifyLayoutResize(PHASHVERIFYCONTEXT ctx)
+{
+	if (!ctx || !ctx->layout.ready || IsIconic(ctx->hWnd)) return;
+	HASHVERIFYLAYOUT *layout = &ctx->layout;
+	RECT client;
+	GetClientRect(ctx->hWnd, &client);
+	LONG dx = client.right - MulDiv(layout->client.cx, layout->dpi, layout->initialDpi);
+	LONG dy = client.bottom - MulDiv(layout->client.cy, layout->dpi, layout->initialDpi);
+	RECT rectangles[countof(HashVerifyAnchors)];
+	for (UINT i = 0; i < countof(HashVerifyAnchors); ++i)
+	{
+		RECT rect = layout->controls[i];
+		rect.left = MulDiv(rect.left, layout->dpi, layout->initialDpi);
+		rect.top = MulDiv(rect.top, layout->dpi, layout->initialDpi);
+		rect.right = MulDiv(rect.right, layout->dpi, layout->initialDpi);
+		rect.bottom = MulDiv(rect.bottom, layout->dpi, layout->initialDpi);
+		UINT flags = HashVerifyAnchors[i].flags;
+		if (flags & HV_MOVE_X) OffsetRect(&rect, dx, 0);
+		if (flags & HV_MOVE_Y) OffsetRect(&rect, 0, dy);
+		if (flags & HV_SIZE_X) rect.right += dx;
+		if (flags & HV_SIZE_Y) rect.bottom += dy;
+		rectangles[i] = rect;
+	}
+	HDWP batch = BeginDeferWindowPos(countof(HashVerifyAnchors));
+	for (UINT i = 0; batch && i < countof(HashVerifyAnchors); ++i)
+	{
+		const RECT *rect = &rectangles[i];
+		batch = DeferWindowPos(batch, GetDlgItem(ctx->hWnd, HashVerifyAnchors[i].id), NULL,
+			rect->left, rect->top, rect->right - rect->left, rect->bottom - rect->top,
+			SWP_NOZORDER | SWP_NOACTIVATE);
+	}
+	if (!batch || !EndDeferWindowPos(batch))
+	{
+		for (UINT i = 0; i < countof(HashVerifyAnchors); ++i)
+		{
+			const RECT *rect = &rectangles[i];
+			SetWindowPos(GetDlgItem(ctx->hWnd, HashVerifyAnchors[i].id), NULL,
+				rect->left, rect->top, rect->right - rect->left, rect->bottom - rect->top,
+				SWP_NOZORDER | SWP_NOACTIVATE);
+		}
+	}
+	RedrawWindow(ctx->hWnd, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+}
+
+static VOID WINAPI HashVerifyChangeDpi(PHASHVERIFYCONTEXT ctx, UINT dpi, const RECT *suggested)
+{
+	if (!ctx || !ctx->layout.ready || !dpi) return;
+	HASHVERIFYLAYOUT *layout = &ctx->layout;
+	LOGFONT font = layout->font;
+	font.lfHeight = MulDiv(font.lfHeight, dpi, layout->initialDpi);
+	font.lfWidth = MulDiv(font.lfWidth, dpi, layout->initialDpi);
+	HFONT scaled = CreateFontIndirect(&font);
+	if (scaled)
+	{
+		SendMessage(ctx->hWnd, WM_SETFONT, (WPARAM)scaled, FALSE);
+		for (UINT i = 0; i < countof(HashVerifyAnchors); ++i)
+			SendDlgItemMessage(ctx->hWnd, HashVerifyAnchors[i].id, WM_SETFONT, (WPARAM)scaled, FALSE);
+		if (layout->scaledFont) DeleteObject(layout->scaledFont);
+		layout->scaledFont = scaled;
+	}
+	for (int column = HV_COL_FIRST; column <= HV_COL_LAST; ++column)
+		ListView_SetColumnWidth(ctx->hWndList, column,
+			MulDiv(ListView_GetColumnWidth(ctx->hWndList, column), dpi, layout->dpi));
+	layout->dpi = dpi;
+	SetWindowPos(ctx->hWnd, NULL, suggested->left, suggested->top,
+		suggested->right - suggested->left, suggested->bottom - suggested->top,
+		SWP_NOZORDER | SWP_NOACTIVATE);
+	HashVerifyLayoutResize(ctx);
+}
+
+static BOOL WINAPI HashVerifyValidPlacement(const HASHVERIFYPLACEMENT *saved)
+{
+	LONGLONG width = (LONGLONG)saved->normal.right - saved->normal.left;
+	LONGLONG height = (LONGLONG)saved->normal.bottom - saved->normal.top;
+	return saved->version == 1 && saved->dpi >= 48 && saved->dpi <= 960 &&
+		width > 0 && width <= 65535 && height > 0 && height <= 65535;
+}
+
+static RECT WINAPI HashVerifyFitWindow(RECT rect, const RECT *work, SIZE minimum)
+{
+	LONG width = std::min<LONG>(std::max<LONG>(rect.right - rect.left, minimum.cx), work->right - work->left);
+	LONG height = std::min<LONG>(std::max<LONG>(rect.bottom - rect.top, minimum.cy), work->bottom - work->top);
+	rect.left = std::max<LONG>(work->left, std::min<LONG>(rect.left, work->right - width));
+	rect.top = std::max<LONG>(work->top, std::min<LONG>(rect.top, work->bottom - height));
+	rect.right = rect.left + width;
+	rect.bottom = rect.top + height;
+	return rect;
+}
+
+static VOID WINAPI HashVerifyRestoreWindow(PHASHVERIFYCONTEXT ctx)
+{
+	HKEY key;
+	if (RegOpenKeyEx(HKEY_CURRENT_USER, TEXT("Software\\HashCheck"), 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
+		return;
+	HASHVERIFYPLACEMENT saved = {};
+	DWORD type = 0, size = sizeof(saved);
+	LSTATUS error = RegQueryValueEx(key, TEXT("VerifyWindow"), NULL, &type, (PBYTE)&saved, &size);
+	RegCloseKey(key);
+	if (error != ERROR_SUCCESS || type != REG_BINARY || size != sizeof(saved) || !HashVerifyValidPlacement(&saved))
+		return;
+	MONITORINFO monitor = { sizeof(monitor) };
+	if (!GetMonitorInfo(MonitorFromRect(&saved.normal, MONITOR_DEFAULTTONEAREST), &monitor)) return;
+	RECT rect = HashVerifyFitWindow(saved.normal, &monitor.rcWork, HashVerifyMinimumSize(ctx));
+	// Moving the hidden dialog first lets its host apply the target monitor's DPI.
+	SetWindowPos(ctx->hWnd, NULL, rect.left, rect.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+	rect.right = rect.left + MulDiv(saved.normal.right - saved.normal.left, ctx->layout.dpi, saved.dpi);
+	rect.bottom = rect.top + MulDiv(saved.normal.bottom - saved.normal.top, ctx->layout.dpi, saved.dpi);
+	rect = HashVerifyFitWindow(rect, &monitor.rcWork, HashVerifyMinimumSize(ctx));
+	WINDOWPLACEMENT placement = { sizeof(placement) };
+	placement.showCmd = saved.maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+	placement.rcNormalPosition = rect;
+	// WINDOWPLACEMENT uses workspace coordinates; our saved rectangle uses screen coordinates.
+	OffsetRect(&placement.rcNormalPosition, monitor.rcMonitor.left - monitor.rcWork.left,
+		monitor.rcMonitor.top - monitor.rcWork.top);
+	SetWindowPlacement(ctx->hWnd, &placement);
+}
+
+static VOID WINAPI HashVerifySaveWindow(PHASHVERIFYCONTEXT ctx)
+{
+	if (!ctx->layout.ready) return;
+	WINDOWPLACEMENT placement = { sizeof(placement) };
+	MONITORINFO monitor = { sizeof(monitor) };
+	if (!GetWindowPlacement(ctx->hWnd, &placement) ||
+		!GetMonitorInfo(MonitorFromWindow(ctx->hWnd, MONITOR_DEFAULTTONEAREST), &monitor)) return;
+	HASHVERIFYPLACEMENT saved = {};
+	saved.version = 1;
+	saved.normal = placement.rcNormalPosition;
+	OffsetRect(&saved.normal, monitor.rcWork.left - monitor.rcMonitor.left,
+		monitor.rcWork.top - monitor.rcMonitor.top);
+	saved.dpi = ctx->layout.dpi;
+	saved.maximized = placement.showCmd == SW_SHOWMAXIMIZED ||
+		(placement.showCmd == SW_SHOWMINIMIZED && (placement.flags & WPF_RESTORETOMAXIMIZED));
+	HKEY key;
+	if (HashVerifyValidPlacement(&saved) && RegCreateKeyEx(HKEY_CURRENT_USER,
+		TEXT("Software\\HashCheck"), 0, NULL, 0, KEY_SET_VALUE, NULL, &key, NULL) == ERROR_SUCCESS)
+	{
+		RegSetValueEx(key, TEXT("VerifyWindow"), 0, REG_BINARY, (PCBYTE)&saved, sizeof(saved));
+		RegCloseKey(key);
+	}
+}
+
+static VOID WINAPI HashVerifyBuildCopyText(PHASHVERIFYCONTEXT ctx, UINT command, std::basic_string<TCHAR>& text)
+{
+	if (command != IDM_HV_COPY_SELECTED)
+	{
+		text += ctx->pszPath;
+		text += TEXT("\r\n");
+		static const UINT labels[] = { IDC_MATCH_LABEL, IDC_MISMATCH_LABEL, IDC_UNREADABLE_LABEL, IDC_PENDING_LABEL };
+		for (UINT i = 0; i < countof(labels); ++i)
+		{
+			TCHAR label[MAX_STRINGRES], value[MAX_STRINGMSG];
+			GetDlgItemText(ctx->hWnd, labels[i], label, countof(label));
+			GetDlgItemText(ctx->hWnd, labels[i] + 1, value, countof(value));
+			text += label;
+			text += TEXT("\t");
+			text += value;
+			text += TEXT("\r\n");
+		}
+		if (command == IDM_HV_COPY_SUMMARY) return;
+		text += TEXT("\r\n");
+	}
+	static const UINT headers[] = { IDS_HV_COL_FILENAME, IDS_HV_COL_SIZE, IDS_HV_COL_STATUS, IDS_HV_COL_EXPECTED, IDS_HV_COL_ACTUAL };
+	int order[] = { 0, 1, 2, 3, 4 };
+	ListView_GetColumnOrderArray(ctx->hWndList, countof(order), order);
+	for (UINT column = 0; column < countof(headers); ++column)
+	{
+		TCHAR label[MAX_STRINGRES];
+		LoadString(g_hModThisDll, headers[order[column]], label, countof(label));
+		if (column) text += TEXT("\t");
+		text += label;
+	}
+	text += TEXT("\r\n");
+	TCHAR pending[MAX_STRINGRES];
+	LoadString(g_hModThisDll, IDS_HV_STATUS_PENDING, pending, countof(pending));
+	BOOL selected = command == IDM_HV_COPY_SELECTED;
+	for (int row = selected ? ListView_GetNextItem(ctx->hWndList, -1, LVNI_SELECTED) : 0;
+		row >= 0 && (UINT)row < ctx->cTotal;
+		row = selected ? ListView_GetNextItem(ctx->hWndList, row, LVNI_SELECTED) : row + 1)
+	{
+		const HASHVERIFYITEM *item = ctx->index[row];
+		// Workers may already be writing the next result while its UI message is queued.
+		// Only copy mutable result fields after the UI has received that item's update.
+		BOOL reported = item->bResultReported;
+		PCTSTR values[] = { item->pszDisplayName, reported ? item->filesize.sz : TEXT(""),
+			reported ? ctx->szStatus[item->uStatusID] : pending,
+			item->pszExpected, reported ? item->szActual : TEXT("") };
+		for (UINT column = 0; column < countof(values); ++column)
+		{
+			if (column) text += TEXT("\t");
+			text += values[order[column]];
+		}
+		text += TEXT("\r\n");
+	}
+}
+
+static BOOL WINAPI HashVerifyCopyResults(PHASHVERIFYCONTEXT ctx, UINT command)
+{
+	std::basic_string<TCHAR> text;
+	try
+	{
+		HashVerifyUpdateSummary(ctx, NULL);
+		HashVerifyBuildCopyText(ctx, command, text);
+	}
+	catch (const std::bad_alloc&) { return FALSE; }
+	catch (const std::length_error&) { return FALSE; }
+	if (text.size() >= (SIZE_T)-1 / sizeof(TCHAR)) return FALSE;
+	SIZE_T bytes = (text.size() + 1) * sizeof(TCHAR);
+	HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+	if (!memory) return FALSE;
+	PVOID data = GlobalLock(memory);
+	if (!data) { GlobalFree(memory); return FALSE; }
+	memcpy(data, text.c_str(), bytes);
+	GlobalUnlock(memory);
+	BOOL copied = FALSE;
+	if (OpenClipboard(ctx->hWnd))
+	{
+#ifdef UNICODE
+		const UINT format = CF_UNICODETEXT;
+#else
+		const UINT format = CF_TEXT;
+#endif
+		if (EmptyClipboard() && SetClipboardData(format, memory)) copied = TRUE;
+		CloseClipboard();
+	}
+	if (!copied) GlobalFree(memory);
+	return copied;
+}
+
+static VOID WINAPI HashVerifyCopyCommand(PHASHVERIFYCONTEXT ctx, UINT command)
+{
+	if (command == IDM_HV_COPY_SELECTED && !ListView_GetSelectedCount(ctx->hWndList)) return;
+	if (!HashVerifyCopyResults(ctx, command))
+	{
+		TCHAR message[MAX_STRINGMSG];
+		LoadString(g_hModThisDll, IDS_HV_COPY_ERROR, message, countof(message));
+		MessageBox(ctx->hWnd, message, NULL, MB_OK | MB_ICONERROR);
+	}
+}
+
+static VOID WINAPI HashVerifyCopyMenu(PHASHVERIFYCONTEXT ctx, POINT point)
+{
+	HMENU menu = CreatePopupMenu();
+	if (!menu) return;
+	static const struct { UINT command, string; } entries[] = {
+		{ IDM_HV_COPY_SELECTED, IDS_HV_COPY_SELECTED },
+		{ IDM_HV_COPY_ALL, IDS_HV_COPY_ALL },
+		{ IDM_HV_COPY_SUMMARY, IDS_HV_COPY_SUMMARY }
+	};
+	for (UINT i = 0; i < countof(entries); ++i)
+	{
+		TCHAR label[MAX_STRINGRES];
+		LoadString(g_hModThisDll, entries[i].string, label, countof(label));
+		UINT flags = MF_STRING;
+		if ((entries[i].command == IDM_HV_COPY_SELECTED && !ListView_GetSelectedCount(ctx->hWndList)) ||
+			(entries[i].command == IDM_HV_COPY_ALL && !ctx->cTotal)) flags |= MF_GRAYED;
+		AppendMenu(menu, flags, entries[i].command, label);
+	}
+	UINT command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON,
+		point.x, point.y, 0, ctx->hWnd, NULL);
+	DestroyMenu(menu);
+	if (command) HashVerifyCopyCommand(ctx, command);
+}
+
 INT_PTR CALLBACK HashVerifyDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 {
 	PHASHVERIFYCONTEXT phvctx;
@@ -1079,12 +1450,19 @@ INT_PTR CALLBACK HashVerifyDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
 			// Initialize the summary
 			SendMessage(phvctx->hWndPBTotal, PBM_SETRANGE32, 0, phvctx->cTotal);
 			HashVerifyUpdateSummary(phvctx, NULL);
+			HashVerifyRestoreWindow(phvctx);
 
 			return(TRUE);
 		}
 
 		case WM_DESTROY:
 		{
+			phvctx = (PHASHVERIFYCONTEXT)GetWindowLongPtr(hWnd, DWLP_USER);
+			if (phvctx && phvctx->layout.scaledFont)
+			{
+				DeleteObject(phvctx->layout.scaledFont);
+				phvctx->layout.scaledFont = NULL;
+			}
 			SetAppIDForWindow(hWnd, FALSE);
 			break;
 		}
@@ -1106,6 +1484,20 @@ INT_PTR CALLBACK HashVerifyDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
 
 			switch (LOWORD(wParam))
 			{
+				case IDC_HV_COPY:
+				{
+					RECT button;
+					GetWindowRect(GetDlgItem(hWnd, IDC_HV_COPY), &button);
+					POINT point = { button.left, button.bottom };
+					HashVerifyCopyMenu(phvctx, point);
+					return(TRUE);
+				}
+				case IDM_HV_COPY_SELECTED:
+				case IDM_HV_COPY_ALL:
+				case IDM_HV_COPY_SUMMARY:
+					HashVerifyCopyCommand(phvctx, LOWORD(wParam));
+					return(TRUE);
+
 				case IDC_PAUSE:
 				{
 					if (WorkerThreadIsRunNowAvailable((PCOMMONCONTEXT)phvctx))
@@ -1127,12 +1519,64 @@ INT_PTR CALLBACK HashVerifyDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
 					phvctx->dwFlags |= HCF_EXIT_PENDING;
 					WorkerThreadStop((PCOMMONCONTEXT)phvctx);
 					WorkerThreadCleanup((PCOMMONCONTEXT)phvctx);
+					HashVerifySaveWindow(phvctx);
 					EndDialog(hWnd, 0);
 					break;
 				}
 			}
 
 			break;
+		}
+
+		case WM_SIZE:
+		{
+			phvctx = (PHASHVERIFYCONTEXT)GetWindowLongPtr(hWnd, DWLP_USER);
+			if (wParam != SIZE_MINIMIZED) HashVerifyLayoutResize(phvctx);
+			return(TRUE);
+		}
+		case WM_GETMINMAXINFO:
+		{
+			phvctx = (PHASHVERIFYCONTEXT)GetWindowLongPtr(hWnd, DWLP_USER);
+			if (phvctx && phvctx->layout.ready)
+			{
+				SIZE minimum = HashVerifyMinimumSize(phvctx);
+				((LPMINMAXINFO)lParam)->ptMinTrackSize.x = minimum.cx;
+				((LPMINMAXINFO)lParam)->ptMinTrackSize.y = minimum.cy;
+				return(TRUE);
+			}
+			break;
+		}
+		case WM_DPICHANGED:
+		{
+			if (!HashVerifyScalesForDpi(hWnd)) break;
+			phvctx = (PHASHVERIFYCONTEXT)GetWindowLongPtr(hWnd, DWLP_USER);
+			HashVerifyChangeDpi(phvctx, LOWORD(wParam), (const RECT*)lParam);
+			return(TRUE);
+		}
+		case WM_CONTEXTMENU:
+		{
+			phvctx = (PHASHVERIFYCONTEXT)GetWindowLongPtr(hWnd, DWLP_USER);
+			if (!phvctx) break;
+			POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+			if (point.x == -1 && point.y == -1)
+			{
+				RECT item;
+				int row = ListView_GetNextItem(phvctx->hWndList, -1, LVNI_FOCUSED);
+				if (row >= 0 && ListView_GetItemRect(phvctx->hWndList, row, &item, LVIR_BOUNDS))
+				{
+					point.x = item.left;
+					point.y = item.bottom;
+					ClientToScreen(phvctx->hWndList, &point);
+				}
+				else
+				{
+					GetWindowRect(phvctx->hWndList, &item);
+					point.x = item.left;
+					point.y = item.top;
+				}
+			}
+			HashVerifyCopyMenu(phvctx, point);
+			return(TRUE);
 		}
 
 		case WM_NOTIFY:
@@ -1145,6 +1589,16 @@ INT_PTR CALLBACK HashVerifyDlgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
 
 				switch (pnm->code)
 				{
+					case LVN_KEYDOWN:
+					{
+						if (GetKeyState(VK_CONTROL) & 0x8000)
+						{
+							WORD key = ((LPNMLVKEYDOWN)lParam)->wVKey;
+							if (key == 'C') HashVerifyCopyCommand(phvctx, IDM_HV_COPY_SELECTED);
+							else if (key == 'A') ListView_SetItemState(phvctx->hWndList, -1, LVIS_SELECTED, LVIS_SELECTED);
+						}
+						break;
+					}
 					case LVN_GETDISPINFO:
 					{
 						HashVerifyListInfo(phvctx, (LPNMLVDISPINFO)lParam);
@@ -1269,6 +1723,7 @@ VOID WINAPI HashVerifyDlgInit( PHASHVERIFYCONTEXT phvctx )
 		static const UINT16 arStrMap[][2] =
 		{
 			{ IDC_SUMMARY,          IDS_HV_SUMMARY    },
+			{ IDC_HV_COPY,          IDS_HV_COPY       },
 			{ IDC_MATCH_LABEL,      IDS_HV_MATCH      },
 			{ IDC_MISMATCH_LABEL,   IDS_HV_MISMATCH   },
 			{ IDC_UNREADABLE_LABEL, IDS_HV_UNREADABLE },
@@ -1393,6 +1848,7 @@ VOID WINAPI HashVerifyDlgInit( PHASHVERIFYCONTEXT phvctx )
         phvctx->hThread = NULL;
         phvctx->hUnpauseEvent = NULL;
 	}
+	HashVerifyLayoutInit(phvctx);
 }
 
 
@@ -1458,6 +1914,7 @@ VOID WINAPI HashVerifyUpdateSummary( PHASHVERIFYCONTEXT phvctx, PHASHVERIFYITEM 
 	// Update the list
 	if (pItem)
 	{
+		pItem->bResultReported = TRUE;
 		switch (pItem->uStatusID)
 		{
 			case HV_STATUS_MATCH:

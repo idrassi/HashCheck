@@ -65,6 +65,12 @@
 #define IDS_HV_STATUS_MATCH             0x440C
 #define IDS_HV_STATUS_MISMATCH          0x440D
 #define IDS_HV_STATUS_UNREADABLE        0x440E
+#define IDS_HV_COPY                     0x4410
+#define IDS_HV_COPY_SELECTED            0x4411
+#define IDS_HV_COPY_ALL                 0x4412
+#define IDS_HV_COPY_SUMMARY             0x4413
+#define IDS_HV_COPY_ERROR               0x4414
+#define IDS_HV_STATUS_PENDING           0x4415
 
 #define IDS_OPT_TITLE                   0x4500
 #define IDS_OPT_CM                      0x4501

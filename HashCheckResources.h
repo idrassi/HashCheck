@@ -60,6 +60,10 @@
 #define IDC_UNREADABLE_RESULTS          408
 #define IDC_PENDING_LABEL               409
 #define IDC_PENDING_RESULTS             410
+#define IDC_HV_COPY                     411
+#define IDM_HV_COPY_SELECTED            412
+#define IDM_HV_COPY_ALL                 413
+#define IDM_HV_COPY_SUMMARY             414
 #define IDC_EXIT                        IDCANCEL
 
 // Options dialog

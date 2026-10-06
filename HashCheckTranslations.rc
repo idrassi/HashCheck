@@ -1356,6 +1356,12 @@ STRINGTABLE LANGUAGE LANG_CATALAN, SUBLANG_CATALAN_CATALAN
 // English fallback strings for features added after the localized tables above.
 STRINGTABLE LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
 {
+	IDS_HV_COPY                 "&Copy..."
+	IDS_HV_COPY_SELECTED        "Copy selected rows\tCtrl+C"
+	IDS_HV_COPY_ALL             "Copy all results"
+	IDS_HV_COPY_SUMMARY         "Copy summary"
+	IDS_HV_COPY_ERROR           "Could not copy the results. Please try again."
+	IDS_HV_STATUS_PENDING       "PENDING"
 	IDS_HS_MENUTEXT_SEP          "Create Separate Checksum Files..."
 	IDS_HS_SEP_CHK              "Checksum type"
 	IDS_HS_SEP_EX               "If checksum file already exists"
