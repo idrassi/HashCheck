@@ -126,6 +126,19 @@ Var LastCode
             SetRebootFlag true
 !macroend
 
+; Install before registering the DLL so its file association can use the launcher.
+!macro InstallLauncher Platform ProgramFiles
+    !insertmacro SetStep "Creating ${ProgramFiles}\HashCheck"
+    ClearErrors
+    SetOutPath "${ProgramFiles}\HashCheck"
+    !insertmacro AbortIfErrors "Creating ${ProgramFiles}\HashCheck"
+
+    !insertmacro SetStep "Extracting ${Platform} HashCheck launcher"
+    ClearErrors
+    File "..\Bin\${Platform}\Release\HashCheckPackageHost.exe"
+    !insertmacro AbortIfErrors "Extracting ${Platform} HashCheck launcher"
+!macroend
+
 Function init_log
     StrCpy $LogPath "$TEMP\HashCheckSetup.log"
 
@@ -242,6 +255,9 @@ Section
         File /oname=$0 ..\Bin\x64\Release\HashCheck.dll
         !insertmacro AbortIfErrors "Extracting 64-bit HashCheck.dll"
 
+        ; The launcher also hosts the Windows 11 packaged commands.
+        !insertmacro InstallLauncher x64 $PROGRAMFILES64
+
         !insertmacro SetStep "Registering 64-bit shell extension"
         ClearErrors
         ExecWait 'regsvr32 /i:"NoRebootPrompt" /n /s "$0"' $LastCode
@@ -290,15 +306,6 @@ Section
         ClearErrors
         File /oname=tbb12-LICENSE.txt ..\libs\oneTBB\LICENSE.txt
         !insertmacro AbortIfErrors "Extracting TBB runtime license"
-
-        ; Install the standalone launcher used for command-line checksum creation.
-        ; On Windows 11, the sparse package also declares this executable as its
-        ; Application/Executable, and the IExplorerCommand handler launches it so
-        ; long-lived HashCheck UI runs outside the COM surrogate.
-        !insertmacro SetStep "Extracting packaged app host"
-        ClearErrors
-        File ..\Bin\x64\Release\HashCheckPackageHost.exe
-        !insertmacro AbortIfErrors "Extracting packaged app host"
 
         ${If} ${AtLeastWin11}
             ; Windows 11 uses the sparse package app identity, not
@@ -363,6 +370,10 @@ Section
         File /oname=$0 ..\Bin\Win32\Release\HashCheck.dll
         !insertmacro AbortIfErrors "Extracting 32-bit HashCheck.dll"
 
+        ; Both registration passes write the shared file association. Each DLL
+        ; needs a launcher of its own architecture beside it.
+        !insertmacro InstallLauncher Win32 $PROGRAMFILES32
+
         !insertmacro SetStep "Registering 32-bit shell extension"
         ClearErrors
         ExecWait 'regsvr32 /i:"NoUninstall NoRebootPrompt" /n /s "$0"' $LastCode
@@ -390,6 +401,8 @@ Section
         File /oname=$0 ..\Bin\Win32\Release\HashCheck.dll
         !insertmacro AbortIfErrors "Extracting 32-bit HashCheck.dll"
 
+        !insertmacro InstallLauncher Win32 $PROGRAMFILES
+
         !insertmacro SetStep "Registering 32-bit shell extension"
         ClearErrors
         ExecWait 'regsvr32 /i:"NoRebootPrompt" /n /s "$0"' $LastCode
@@ -411,16 +424,6 @@ Section
         !insertmacro SetStep "Cleaning up old 32-bit install location"
         Delete /REBOOTOK $SYSDIR\ShellExt\HashCheck.dll
 
-        ; Install the launcher used for command-line checksum creation.
-        !insertmacro SetStep "Creating $PROGRAMFILES\HashCheck"
-        ClearErrors
-        SetOutPath "$PROGRAMFILES\HashCheck"
-        !insertmacro AbortIfErrors "Creating $PROGRAMFILES\HashCheck"
-
-        !insertmacro SetStep "Extracting HashCheck launcher"
-        ClearErrors
-        File ..\Bin\Win32\Release\HashCheckPackageHost.exe
-        !insertmacro AbortIfErrors "Extracting HashCheck launcher"
     ${EndIf}
 
     Delete $0

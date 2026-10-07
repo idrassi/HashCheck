@@ -215,9 +215,37 @@ STDAPI DllRegisterServerEx( LPCTSTR lpszModuleName )
 	if (hKey = RegOpen(HKEY_CLASSES_ROOT, TEXT("%s\\shell\\open\\command"), PROGID_STR_HashCheck, TRUE))
 	{
 		// This is a legacy fallback used only when DropTarget is unsupported
-		StringCchPrintf(szBuffer, countof(szBuffer), TEXT("rundll32.exe \"%s\",HashVerify_RunDLL %%1"), lpszModuleName);
-		RegSetSZ(hKey, NULL, szBuffer);
+		TCHAR szLauncherPath[MAX_PATH << 1];
+		HRESULT hr = StringCchCopy(szLauncherPath, countof(szLauncherPath), lpszModuleName);
+		PTSTR pszFileName = SUCCEEDED(hr) ? StrRChr(szLauncherPath, NULL, TEXT('\\')) : NULL;
+		if (pszFileName)
+		{
+			++pszFileName;
+			hr = StringCchCopy(pszFileName, countof(szLauncherPath) - (pszFileName - szLauncherPath),
+			                   TEXT("HashCheckPackageHost.exe"));
+		}
+		else
+			hr = E_INVALIDARG;
+
+		if (SUCCEEDED(hr))
+		{
+			DWORD dwAttributes = GetFileAttributes(szLauncherPath);
+			if (dwAttributes != INVALID_FILE_ATTRIBUTES && !(dwAttributes & FILE_ATTRIBUTE_DIRECTORY))
+			{
+				// Wine 9.0 can't switch rundll32 architectures to match the DLL.
+				// The launcher always loads the matching DLL installed beside it.
+				hr = StringCchPrintf(szBuffer, countof(szBuffer), TEXT("\"%s\" /verify \"%%1\""), szLauncherPath);
+			}
+			else
+			{
+				// Keep standalone DLL registration working without the launcher.
+				hr = StringCchPrintf(szBuffer, countof(szBuffer), TEXT("rundll32.exe \"%s\",HashVerify_RunDLL %%1"), lpszModuleName);
+			}
+		}
+
+		BOOL bRegistered = SUCCEEDED(hr) && RegSetSZ(hKey, NULL, szBuffer);
 		RegCloseKey(hKey);
+		if (!bRegistered) return(SELFREG_E_CLASS);
 	} else return(SELFREG_E_CLASS);
 
 	if (hKey = RegOpen(HKEY_CLASSES_ROOT, TEXT("%s\\shell\\edit\\command"), PROGID_STR_HashCheck, TRUE))
